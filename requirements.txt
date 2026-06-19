@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+wikipedia-api
+chromadb
+sentence-transformers
+python-dotenv
+requests
+numpy
+openai
+httpx
+pydantic
