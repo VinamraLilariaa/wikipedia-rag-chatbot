@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic import BaseModel
 
 
@@ -6,6 +8,10 @@ class AskRequest(BaseModel):
 
 
 class AskResponse(BaseModel):
-    title: str
-    url: str
-    content: str
+    answer: str
+    article: str
+    wikipedia_url: str
+    sources: List[str]
+    cache_hit: bool
+    response_time: float
+    model: str

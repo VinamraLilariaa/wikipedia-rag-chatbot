@@ -3,10 +3,13 @@
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 
 # Chroma
 chroma_db/
+
+# Cache
+backend/app/cache/cache_metadata.json
 
 # Environment Variables
 .env

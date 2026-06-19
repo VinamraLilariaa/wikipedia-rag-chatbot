@@ -1,17 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.app.api.schemas import AskRequest, AskResponse
-from backend.app.services.wikipedia_service import WikipediaService
+from backend.app.services.rag_service import RAGService
 
 router = APIRouter()
 
-wiki = WikipediaService()
+rag = RAGService()
 
 
 @router.get("/")
 def root():
     return {
-        "message": "Wikipedia RAG Chatbot API is running!"
+        "message": "Wikipedia RAG Chatbot API"
     }
 
 
@@ -22,22 +22,17 @@ def health():
     }
 
 
-@router.post("/ask", response_model=AskResponse)
+@router.post(
+    "/ask",
+    response_model=AskResponse,
+)
 def ask(request: AskRequest):
 
     try:
-
-        article = wiki.get_article(request.question)
-
-        return AskResponse(
-            title=article["title"],
-            url=article["url"],
-            content=article["content"][:2000]
-        )
+        return rag.ask(request.question)
 
     except Exception as e:
-
         raise HTTPException(
-            status_code=404,
-            detail=str(e)
+            status_code=500,
+            detail=str(e),
         )

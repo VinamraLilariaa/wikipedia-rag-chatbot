@@ -21,7 +21,7 @@ OLLAMA_BASE_URL = os.getenv(
 
 OLLAMA_MODEL = os.getenv(
     "OLLAMA_MODEL",
-    "qwen2.5:3b"
+    "qwen3:4b"
 )
 
 # -------------------------
@@ -59,3 +59,8 @@ CHUNK_OVERLAP = int(
 TOP_K = int(
     os.getenv("TOP_K", 5)
 )
+# -------------------------
+# Cache
+# -------------------------
+
+CACHE_FILE = BASE_DIR / "backend" / "app" / "cache" / "cache_metadata.json"
