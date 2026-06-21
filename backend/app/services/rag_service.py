@@ -11,9 +11,6 @@ from backend.app.vectorstore.chroma_store import ChromaStore
 
 
 class RAGService:
-    """
-    Complete Retrieval-Augmented Generation Pipeline.
-    """
 
     def __init__(self):
 
@@ -36,7 +33,8 @@ class RAGService:
 
         cache_hit = self.cache.exists(title)
 
-        if not cache_hit:
+        # Prevent duplicate indexing
+        if (not cache_hit) and (not self.chroma.article_exists(title)):
 
             cleaned = self.cleaner.clean(
                 article["content"]
@@ -79,34 +77,29 @@ class RAGService:
 
         return article, cache_hit
 
-    def ask(
-        self,
-        question: str,
-    ):
+    def ask(self, question: str):
 
         start = time.time()
 
-        article, cache_hit = self._index_article(
-            question
-        )
+        article, cache_hit = self._index_article(question)
 
-        query_embedding = self.embedder.embed_query(
-            question
-        )
+        query_embedding = self.embedder.embed_query(question)
 
         results = self.chroma.search(
             query_embedding,
             top_k=TOP_K,
         )
 
-        if not results["documents"]:
-            raise Exception("No documents returned from Chroma.")
+        if (
+            "documents" not in results
+            or not results["documents"]
+            or not results["documents"][0]
+        ):
+            raise Exception("No relevant documents found.")
 
         retrieved_chunks = results["documents"][0]
 
-        context = "\n\n".join(
-            retrieved_chunks
-        )
+        context = "\n\n".join(retrieved_chunks)
 
         answer = self.llm.generate(
             question=question,

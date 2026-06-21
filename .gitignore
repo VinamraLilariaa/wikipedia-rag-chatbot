@@ -5,7 +5,7 @@
 __pycache__/
 *.py[cod]
 
-# Chroma
+# ChromaDB
 chroma_db/
 
 # Cache
@@ -14,5 +14,12 @@ backend/app/cache/cache_metadata.json
 # Environment Variables
 .env
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # macOS
 .DS_Store
+
+# IDE
+.vscode/
