@@ -11,36 +11,32 @@ function App() {
   const askQuestion = async () => {
     if (!question.trim() || loading) return;
 
+    setLoading(true);
     setResult(null);
     setShowSources(false);
-    setLoading(true);
 
     try {
-      const response = await axios.post("/ask", {
+      const API_URL = import.meta.env.VITE_API_URL || "/api";
+
+      const response = await axios.post(`${API_URL}/ask`, {
         question,
       });
 
       setResult(response.data);
-
     } catch (error) {
-
       console.error(error);
 
       alert(
         error.response?.data?.detail ||
-        "Unable to connect to backend."
+          "Unable to connect to backend."
       );
-
     } finally {
-
       setLoading(false);
-
     }
   };
 
   return (
     <div className="container">
-
       <h1>📚 Wikipedia RAG Chatbot</h1>
 
       <p className="subtitle">
@@ -48,7 +44,6 @@ function App() {
       </p>
 
       <div className="searchBox">
-
         <input
           autoFocus
           type="text"
@@ -56,9 +51,7 @@ function App() {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              askQuestion();
-            }
+            if (e.key === "Enter") askQuestion();
           }}
         />
 
@@ -68,35 +61,24 @@ function App() {
         >
           {loading ? "Thinking..." : "Ask"}
         </button>
-
       </div>
 
       {loading && (
-
         <div className="loading">
-
           <div className="spinner"></div>
-
           <p>Generating Answer...</p>
-
         </div>
-
       )}
 
       {result && (
-
         <div className="result">
-
           <h2>Answer</h2>
 
-          <p className="answer">
-            {result.answer}
-          </p>
+          <p className="answer">{result.answer}</p>
 
           <hr />
 
           <div className="metadata">
-
             <p>
               📄 <strong>Article:</strong> {result.article}
             </p>
@@ -123,12 +105,13 @@ function App() {
             >
               📖 Open Wikipedia Article
             </a>
-
           </div>
 
           <button
             className="toggleButton"
-            onClick={() => setShowSources(!showSources)}
+            onClick={() =>
+              setShowSources(!showSources)
+            }
           >
             {showSources
               ? "Hide Retrieved Context"
@@ -136,36 +119,21 @@ function App() {
           </button>
 
           {showSources && (
-
             <div className="sources">
+              {result.sources?.slice(0, 3).map((chunk, index) => (
+                <div
+                  className="chunk"
+                  key={index}
+                >
+                  <strong>Chunk {index + 1}</strong>
 
-              {result.sources
-                .slice(0, 3)
-                .map((chunk, index) => (
-
-                  <div
-                    key={index}
-                    className="chunk"
-                  >
-
-                    <strong>
-                      Chunk {index + 1}
-                    </strong>
-
-                    <p>{chunk}</p>
-
-                  </div>
-
-                ))}
-
+                  <p>{chunk}</p>
+                </div>
+              ))}
             </div>
-
           )}
-
         </div>
-
       )}
-
     </div>
   );
 }

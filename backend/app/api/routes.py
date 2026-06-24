@@ -13,25 +13,27 @@ router = APIRouter()
 rag = None
 
 
-@router.get("/")
-def root():
-    return {"message": "Wikipedia RAG Chatbot API"}
-
-
 @router.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy"
+    }
 
 
-@router.post("/ask", response_model=AskResponse)
+@router.post(
+    "/ask",
+    response_model=AskResponse,
+)
 def ask(request: AskRequest):
+
     global rag
 
     try:
+
         if rag is None:
-            print("Creating RAGService...")
+            print("Creating RAG Service...")
             rag = RAGService()
-            print("RAGService created.")
+            print("RAG Service Created!")
 
         return rag.ask(request.question)
 
