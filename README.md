@@ -1,319 +1,95 @@
+---
+title: Wikipedia RAG Chatbot
+emoji: 📚
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # 📚 Wikipedia RAG Chatbot
 
-A **Retrieval-Augmented Generation (RAG)** chatbot that answers user questions using Wikipedia as its knowledge source.
+A full-stack Retrieval-Augmented Generation (RAG) chatbot that retrieves information from Wikipedia, stores embeddings in ChromaDB, and generates grounded answers using Groq Llama.
 
-The application retrieves relevant Wikipedia articles, preprocesses and chunks the text, generates semantic embeddings using SentenceTransformers, stores them in ChromaDB, retrieves the most relevant context through vector similarity search, and finally generates a grounded answer using the **Groq API**.
+## Features
 
----
-
-# 🚀 Features
-
-- 🔍 Wikipedia article retrieval
-- 🧹 Text cleaning and preprocessing
+- 🔍 Automatic Wikipedia article retrieval
 - ✂️ Intelligent text chunking
 - 🧠 SentenceTransformer embeddings
-- 🗄️ ChromaDB vector database
-- 🤖 Groq LLM Integration
-- ⚡ FastAPI backend
-- 🎨 React + Vite frontend
-- 📖 Wikipedia source links
-- 💾 Cached article indexing
-- 🔄 Semantic retrieval using vector search
+- 💾 ChromaDB vector database
+- ⚡ Groq Llama inference
+- 📖 Retrieved context display
+- 🚀 FastAPI backend
+- ⚛️ React + Vite frontend
+- 🐳 Docker deployment
+- ☁️ Hugging Face Spaces compatible
 
----
+## Tech Stack
 
-# 🏗️ Architecture
+### Backend
 
-```
-                    User
-                      │
-                      ▼
-               React Frontend
-                      │
-              HTTP POST /ask
-                      │
-                      ▼
-                 FastAPI Backend
-                      │
-                      ▼
-                 RAGService
-                      │
-      ┌───────────────┼───────────────┐
-      │               │               │
-Wikipedia       Text Cleaner     Chunker
-      │               │               │
-      └───────────────┴───────────────┘
-                      │
-                      ▼
-         SentenceTransformer Embeddings
-                      │
-                      ▼
-                 ChromaDB
-                      │
-                      ▼
-          Relevant Context Retrieval
-                      │
-                      ▼
-               Groq LLM API
-                      │
-                      ▼
-                Generated Answer
-                      │
-                      ▼
-               React Frontend
-```
-
----
-
-# 🛠 Tech Stack
-
-## Backend
-
-- Python 3.11
 - FastAPI
 - ChromaDB
-- SentenceTransformers
-- Wikipedia API
+- Sentence Transformers
 - Groq API
-- HTTPX
-- LangChain Text Splitters
 
-## Frontend
+### Frontend
 
 - React
 - Vite
 - Axios
-- CSS
 
----
+### Deployment
 
-# 📂 Project Structure
+- Docker
+- Hugging Face Spaces
 
-```
-wikipedia-rag-chatbot/
-│
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── cache/
-│   │   ├── config/
-│   │   ├── services/
-│   │   ├── utils/
-│   │   ├── vectorstore/
-│   │   └── main.py
-│
-├── frontend/
-│   ├── src/
-│   ├── public/
-│   └── package.json
-│
-├── chroma_db/
-├── requirements.txt
-├── README.md
-└── .env
+## Environment Variables
+
+Create a `.env` file containing:
+
+```env
+GROQ_API_KEY=your_groq_api_key
+LLM_PROVIDER=groq
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
----
+## Local Run
 
-# ⚙️ Installation
-
-## 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd wikipedia-rag-chatbot
-```
-
----
-
-## 2. Create Virtual Environment
-
-```bash
-python3 -m venv .venv
-```
-
-Activate it
-
-### macOS / Linux
-
-```bash
-source .venv/bin/activate
-```
-
-### Windows
-
-```bash
-.venv\Scripts\activate
-```
-
----
-
-## 3. Install Dependencies
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
-## 4. Configure Environment Variables
-
-Create a `.env` file in the project root.
-
-```env
-LLM_PROVIDER=groq
-
-GROQ_API_KEY=your_groq_api_key
-
-GROQ_MODEL=llama-3.3-70b-versatile
-
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-CHUNK_SIZE=800
-CHUNK_OVERLAP=100
-TOP_K=5
-```
-
----
-
-## 5. Start the Backend
+Run backend:
 
 ```bash
-python3 -m uvicorn backend.app.main:app --reload
+python -m uvicorn backend.app.main:app --reload
 ```
 
-Backend
-
-```
-http://127.0.0.1:8000
-```
-
-Swagger Docs
-
-```
-http://127.0.0.1:8000/docs
-```
-
----
-
-## 6. Start the Frontend
+Run frontend:
 
 ```bash
 cd frontend
-
 npm install
-
 npm run dev
 ```
 
-Frontend
+## Docker
 
-```
-http://localhost:5173
-```
+Build:
 
----
-
-# 🔄 How It Works
-
-1. User enters a question.
-2. FastAPI receives the request.
-3. Wikipedia is searched for the most relevant article.
-4. The article is downloaded.
-5. The text is cleaned.
-6. The article is split into chunks.
-7. SentenceTransformer generates embeddings.
-8. Embeddings are stored in ChromaDB.
-9. The user's question is converted into an embedding.
-10. ChromaDB retrieves the most relevant chunks.
-11. Retrieved context is sent to the Groq LLM.
-12. The LLM generates an answer grounded in the retrieved Wikipedia context.
-13. The answer is returned to the React frontend.
-
----
-
-# 💡 Example
-
-## Question
-
-```
-What is Python?
+```bash
+docker build -t wikipedia-rag .
 ```
 
-## Response
+Run:
 
-```
-Answer:
-Python is a high-level, general-purpose programming language...
-
-Article:
-Python (programming language)
-
-Response Time:
-0.82 sec
-
-Cache:
-Hit
+```bash
+docker run -p 7860:7860 wikipedia-rag
 ```
 
----
+## License
 
-# 📌 API Endpoints
-
-| Method | Endpoint | Description |
-|----------|----------|-------------|
-| GET | `/` | API Status |
-| GET | `/health` | Health Check |
-| POST | `/ask` | Ask a Question |
-
----
-
-# 🎯 Future Improvements
-
-- Hybrid Retrieval (Keyword + Semantic Search)
-- Query Correction & Fuzzy Matching
-- Streaming Responses
-- Conversation Memory
-- Multi-document Retrieval
-- Cross-Encoder Reranking
-- Docker Support
-- Cloud Deployment (Render + Vercel)
-- Authentication
-- User Chat History
-
----
-
-# 📸 Screenshots
-
-_Add screenshots of the application here._
-
-Example:
-
-- Home Page
-- Generated Answer
-- Retrieved Context
-
----
-
-# 👨‍💻 Authors
-
-- Tanav Lilaria
-- Vinamra Lilaria
-
----
-
-# 📜 License
-
-This project is licensed under the MIT License.
-
----
-
-# ⭐ Acknowledgements
-
-- Wikipedia
-- FastAPI
-- React
-- ChromaDB
-- SentenceTransformers
-- Groq
-- Hugging Face
+MIT License
