@@ -10,30 +10,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-rag = RAGService()
+rag = None
 
 
 @router.get("/")
 def root():
-    return {
-        "message": "Wikipedia RAG Chatbot API"
-    }
+    return {"message": "Wikipedia RAG Chatbot API"}
 
 
 @router.get("/health")
 def health():
-    return {
-        "status": "healthy"
-    }
+    return {"status": "healthy"}
 
 
-@router.post(
-    "/ask",
-    response_model=AskResponse,
-)
+@router.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest):
+    global rag
 
     try:
+        if rag is None:
+            print("Creating RAGService...")
+            rag = RAGService()
+            print("RAGService created.")
+
         return rag.ask(request.question)
 
     except Exception as e:
