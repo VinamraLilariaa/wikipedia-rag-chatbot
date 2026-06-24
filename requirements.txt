@@ -20,6 +20,7 @@ flatbuffers==25.12.19
 frozenlist==1.8.0
 fsspec==2026.6.0
 googleapis-common-protos==1.75.0
+groq==1.5.0
 grpcio==1.81.1
 h11==0.16.0
 hf-xet==1.5.1
@@ -80,6 +81,7 @@ pyproject_hooks==1.2.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 PyYAML==6.0.3
+RapidFuzz==3.14.5
 referencing==0.37.0
 regex==2026.5.9
 requests==2.34.2
@@ -118,5 +120,3 @@ Wikipedia-API==0.15.0
 xxhash==3.7.0
 yarl==1.24.2
 zstandard==0.25.0
-rapidfuzz
-groq
