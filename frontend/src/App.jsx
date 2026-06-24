@@ -16,12 +16,9 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post(
-        "http://127.0.0.1:8000/ask",
-        {
-          question,
-        }
-      );
+      const response = await axios.post("/ask", {
+        question,
+      });
 
       setResult(response.data);
 
@@ -59,7 +56,9 @@ function App() {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") askQuestion();
+            if (e.key === "Enter") {
+              askQuestion();
+            }
           }}
         />
 
@@ -129,9 +128,7 @@ function App() {
 
           <button
             className="toggleButton"
-            onClick={() =>
-              setShowSources(!showSources)
-            }
+            onClick={() => setShowSources(!showSources)}
           >
             {showSources
               ? "Hide Retrieved Context"
@@ -147,9 +144,10 @@ function App() {
                 .map((chunk, index) => (
 
                   <div
-                    className="chunk"
                     key={index}
+                    className="chunk"
                   >
+
                     <strong>
                       Chunk {index + 1}
                     </strong>
@@ -158,7 +156,7 @@ function App() {
 
                   </div>
 
-              ))}
+                ))}
 
             </div>
 
