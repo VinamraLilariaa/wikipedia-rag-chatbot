@@ -1,37 +1,85 @@
 # 📚 Wikipedia RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) chatbot that answers user questions using Wikipedia articles. The application retrieves relevant Wikipedia content, generates embeddings, stores them in ChromaDB, and uses a local Qwen model through Ollama to generate grounded responses.
+A **Retrieval-Augmented Generation (RAG)** chatbot that answers user questions using Wikipedia as its knowledge source.
+
+The application retrieves relevant Wikipedia articles, preprocesses and chunks the text, generates semantic embeddings using SentenceTransformers, stores them in ChromaDB, retrieves the most relevant context through vector similarity search, and finally generates a grounded answer using the **Groq API**.
 
 ---
 
-## Features
+# 🚀 Features
 
 - 🔍 Wikipedia article retrieval
 - 🧹 Text cleaning and preprocessing
 - ✂️ Intelligent text chunking
 - 🧠 SentenceTransformer embeddings
 - 🗄️ ChromaDB vector database
-- 🤖 Local LLM inference using Ollama (Qwen)
+- 🤖 Groq LLM Integration
 - ⚡ FastAPI backend
 - 🎨 React + Vite frontend
 - 📖 Wikipedia source links
-- 💾 Cache support for indexed articles
+- 💾 Cached article indexing
+- 🔄 Semantic retrieval using vector search
 
 ---
 
-## Tech Stack
+# 🏗️ Architecture
 
-### Backend
+```
+                    User
+                      │
+                      ▼
+               React Frontend
+                      │
+              HTTP POST /ask
+                      │
+                      ▼
+                 FastAPI Backend
+                      │
+                      ▼
+                 RAGService
+                      │
+      ┌───────────────┼───────────────┐
+      │               │               │
+Wikipedia       Text Cleaner     Chunker
+      │               │               │
+      └───────────────┴───────────────┘
+                      │
+                      ▼
+         SentenceTransformer Embeddings
+                      │
+                      ▼
+                 ChromaDB
+                      │
+                      ▼
+          Relevant Context Retrieval
+                      │
+                      ▼
+               Groq LLM API
+                      │
+                      ▼
+                Generated Answer
+                      │
+                      ▼
+               React Frontend
+```
+
+---
+
+# 🛠 Tech Stack
+
+## Backend
+
 - Python 3.11
 - FastAPI
-- SentenceTransformers
 - ChromaDB
-- Ollama
-- Qwen3:4B
-- wikipedia-api
+- SentenceTransformers
+- Wikipedia API
+- Groq API
+- HTTPX
 - LangChain Text Splitters
 
-### Frontend
+## Frontend
+
 - React
 - Vite
 - Axios
@@ -39,32 +87,37 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers user questions using
 
 ---
 
-## Project Structure
+# 📂 Project Structure
 
 ```
 wikipedia-rag-chatbot/
 │
 ├── backend/
-│   ├── api/
-│   ├── services/
-│   ├── vectorstore/
-│   ├── utils/
-│   └── main.py
+│   ├── app/
+│   │   ├── api/
+│   │   ├── cache/
+│   │   ├── config/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   ├── vectorstore/
+│   │   └── main.py
 │
 ├── frontend/
 │   ├── src/
-│   └── public/
+│   ├── public/
+│   └── package.json
 │
 ├── chroma_db/
 ├── requirements.txt
-└── README.md
+├── README.md
+└── .env
 ```
 
 ---
 
-## Installation
+# ⚙️ Installation
 
-### Clone
+## 1. Clone the Repository
 
 ```bash
 git clone <repository-url>
@@ -73,23 +126,29 @@ cd wikipedia-rag-chatbot
 
 ---
 
-### Backend
-
-Create a virtual environment
+## 2. Create Virtual Environment
 
 ```bash
 python3 -m venv .venv
 ```
 
-Activate
+Activate it
 
-Mac/Linux
+### macOS / Linux
 
 ```bash
 source .venv/bin/activate
 ```
 
-Install dependencies
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+---
+
+## 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -97,23 +156,27 @@ pip install -r requirements.txt
 
 ---
 
-### Start Ollama
+## 4. Configure Environment Variables
 
-Pull the model
+Create a `.env` file in the project root.
 
-```bash
-ollama pull qwen3:4b
-```
+```env
+LLM_PROVIDER=groq
 
-Run Ollama
+GROQ_API_KEY=your_groq_api_key
 
-```bash
-ollama serve
+GROQ_MODEL=llama-3.3-70b-versatile
+
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+CHUNK_SIZE=800
+CHUNK_OVERLAP=100
+TOP_K=5
 ```
 
 ---
 
-### Start Backend
+## 5. Start the Backend
 
 ```bash
 python3 -m uvicorn backend.app.main:app --reload
@@ -133,11 +196,13 @@ http://127.0.0.1:8000/docs
 
 ---
 
-### Frontend
+## 6. Start the Frontend
 
 ```bash
 cd frontend
+
 npm install
+
 npm run dev
 ```
 
@@ -149,39 +214,43 @@ http://localhost:5173
 
 ---
 
-## How It Works
+# 🔄 How It Works
 
-1. User asks a question.
-2. Wikipedia article is retrieved.
-3. Article is cleaned.
-4. Text is split into chunks.
-5. Embeddings are generated.
-6. Chunks are stored in ChromaDB.
-7. Relevant chunks are retrieved.
-8. Context is sent to Qwen via Ollama.
-9. Answer is returned with Wikipedia source.
+1. User enters a question.
+2. FastAPI receives the request.
+3. Wikipedia is searched for the most relevant article.
+4. The article is downloaded.
+5. The text is cleaned.
+6. The article is split into chunks.
+7. SentenceTransformer generates embeddings.
+8. Embeddings are stored in ChromaDB.
+9. The user's question is converted into an embedding.
+10. ChromaDB retrieves the most relevant chunks.
+11. Retrieved context is sent to the Groq LLM.
+12. The LLM generates an answer grounded in the retrieved Wikipedia context.
+13. The answer is returned to the React frontend.
 
 ---
 
-## Example
+# 💡 Example
 
-Question
+## Question
 
 ```
 What is Python?
 ```
 
-Output
+## Response
 
 ```
 Answer:
-Python is a high-level programming language...
+Python is a high-level, general-purpose programming language...
 
 Article:
 Python (programming language)
 
 Response Time:
-1.24 sec
+0.82 sec
 
 Cache:
 Hit
@@ -189,18 +258,62 @@ Hit
 
 ---
 
-## Future Improvements
+# 📌 API Endpoints
 
-- Streaming responses
-- Conversation memory
-- Multiple document retrieval
-- Better reranking
-- Docker support
-- Authentication
-- Deployment on cloud
+| Method | Endpoint | Description |
+|----------|----------|-------------|
+| GET | `/` | API Status |
+| GET | `/health` | Health Check |
+| POST | `/ask` | Ask a Question |
 
 ---
 
-## Author
+# 🎯 Future Improvements
 
-Vinamra Lilaria
+- Hybrid Retrieval (Keyword + Semantic Search)
+- Query Correction & Fuzzy Matching
+- Streaming Responses
+- Conversation Memory
+- Multi-document Retrieval
+- Cross-Encoder Reranking
+- Docker Support
+- Cloud Deployment (Render + Vercel)
+- Authentication
+- User Chat History
+
+---
+
+# 📸 Screenshots
+
+_Add screenshots of the application here._
+
+Example:
+
+- Home Page
+- Generated Answer
+- Retrieved Context
+
+---
+
+# 👨‍💻 Authors
+
+- Tanav Lilaria
+- Vinamra Lilaria
+
+---
+
+# 📜 License
+
+This project is licensed under the MIT License.
+
+---
+
+# ⭐ Acknowledgements
+
+- Wikipedia
+- FastAPI
+- React
+- ChromaDB
+- SentenceTransformers
+- Groq
+- Hugging Face

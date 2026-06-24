@@ -1,15 +1,23 @@
-import httpx
+from groq import Groq
 
 from backend.app.config.settings import (
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
+    GROQ_API_KEY,
+    GROQ_MODEL,
 )
 
 
 class LLMService:
 
     def __init__(self):
-        self.url = f"{OLLAMA_BASE_URL}/api/generate"
+
+        if not GROQ_API_KEY:
+            raise ValueError(
+                "GROQ_API_KEY not found in .env"
+            )
+
+        self.client = Groq(
+            api_key=GROQ_API_KEY
+        )
 
     def generate(
         self,
@@ -39,23 +47,20 @@ Question:
 Answer:
 """
 
-        response = httpx.post(
-            self.url,
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-            },
-            timeout=120,
+        response = self.client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful Wikipedia assistant."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            max_tokens=512,
         )
 
-        response.raise_for_status()
-
-        try:
-            data = response.json()
-        except Exception:
-            raise Exception(
-                f"Ollama did not return valid JSON.\nResponse:\n{response.text}"
-            )
-
-        return data.get("response", "").strip()
+        return response.choices[0].message.content.strip()

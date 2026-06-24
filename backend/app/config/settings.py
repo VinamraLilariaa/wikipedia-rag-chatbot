@@ -5,14 +5,25 @@ import os
 # Load environment variables
 load_dotenv()
 
+# -------------------------
 # Project Root
+# -------------------------
+
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 # -------------------------
 # LLM Configuration
 # -------------------------
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
+# Default provider
+LLM_PROVIDER = os.getenv(
+    "LLM_PROVIDER",
+    "groq"
+)
+
+# -------------------------
+# Ollama Configuration
+# -------------------------
 
 OLLAMA_BASE_URL = os.getenv(
     "OLLAMA_BASE_URL",
@@ -22,6 +33,19 @@ OLLAMA_BASE_URL = os.getenv(
 OLLAMA_MODEL = os.getenv(
     "OLLAMA_MODEL",
     "qwen3:4b"
+)
+
+# -------------------------
+# Groq Configuration
+# -------------------------
+
+GROQ_API_KEY = os.getenv(
+    "GROQ_API_KEY"
+)
+
+GROQ_MODEL = os.getenv(
+    "GROQ_MODEL",
+    "llama-3.3-70b-versatile"
 )
 
 # -------------------------
@@ -45,7 +69,7 @@ CHROMA_PATH = os.getenv(
 COLLECTION_NAME = "wikipedia_articles"
 
 # -------------------------
-# Chunking
+# Chunking Configuration
 # -------------------------
 
 CHUNK_SIZE = int(
@@ -59,8 +83,15 @@ CHUNK_OVERLAP = int(
 TOP_K = int(
     os.getenv("TOP_K", 5)
 )
+
 # -------------------------
-# Cache
+# Cache Configuration
 # -------------------------
 
-CACHE_FILE = BASE_DIR / "backend" / "app" / "cache" / "cache_metadata.json"
+CACHE_FILE = (
+    BASE_DIR
+    / "backend"
+    / "app"
+    / "cache"
+    / "cache_metadata.json"
+)
