@@ -1,5 +1,4 @@
 from typing import List, Optional
-
 from pydantic import BaseModel
 
 
@@ -24,3 +23,5 @@ class AskResponse(BaseModel):
     model: str
     spelling_corrected: bool = False
     matched_query: Optional[str] = None
+    # Optional error field — allows rag_service to pass error info through
+    error: Optional[str] = None
