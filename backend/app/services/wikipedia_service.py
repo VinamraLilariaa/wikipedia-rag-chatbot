@@ -414,7 +414,8 @@ class WikipediaService:
 
             width = img.get("width")
             try:
-                if width and int(width) < 60:
+                # Skip small logos, icons, and "UI clutter" (Production threshold)
+                if width and int(width) < 100:
                     continue
             except ValueError:
                 pass

@@ -157,12 +157,11 @@ class RAGService:
             ])
             
             rewrite_prompt = (
-                "You are an expert at tracking the subject of a conversation. Based on the following history, "
-                "determine the primary person or subject being discussed and rewrite the latest question to be a standalone search query. "
-                "STAY FOCUSED: Do not switch subjects unless the latest question explicitly mentions a NEW person.\n\n"
+                "You are a search query generator. Based on the history, identify the subject and rewrite the latest question as a standalone search query.\n"
+                "IMPORTANT: Return ONLY the search query string. DO NOT include any explanations, labels, or introductory text.\n\n"
                 f"History:\n{history_text}\n\n"
                 f"Latest Question: {question}\n\n"
-                "Standalone Search Query (include full names):"
+                "Query:"
             )
             
             candidate = self.llm.simple_generate(rewrite_prompt).strip().strip('"')
