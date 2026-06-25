@@ -34,48 +34,39 @@ class RAGService:
 
     def ask(self, question: str, history: list = None):
         start = time.time()
-        search_query = question
+        
+        # 1. Subject Extraction & Locking
+        # Identify the primary subject from the ENTIRE conversation to prevent "Millennials" drift
+        context_prompt = (
+            "Based on this conversation history and the latest question, what is the single most likely SUBJECT (person or entity) being discussed?\n"
+            "History:\n" + ("\n".join([f"{m['role']}: {m['text'] if 'text' in m else ''}" for m in (history or [])[-5:]])) + "\n"
+            f"Question: {question}\n\n"
+            "Return ONLY the name of the subject. NO OTHER TEXT."
+        )
+        primary_subject = self.llm.simple_generate(context_prompt).strip().strip('"').strip("'")
+        
+        # If the AI identified a clear subject, use it for the search
+        search_query = primary_subject if len(primary_subject) > 2 else question
 
-        # 1. BRAIN: Contextual Query Rewriting
-        if history and len(history) > 0:
-            history_text = "\n".join([f"{m['role']}: {m.get('text', m.get('data', {}).get('answer', ''))}" for m in history[-3:]])
-            rewrite_prompt = (
-                "You are an AI search optimizer. Identify the main subject being discussed.\n"
-                "Rewrite the latest question as a standalone search query for Wikipedia.\n"
-                "STRICT RULES:\n"
-                "1. Always include the FULL NAME of the subject.\n"
-                "2. NO 'List of' or 'Table of' unless asked.\n"
-                "3. RETURN ONLY THE QUERY. NO CHATTER.\n\n"
-                f"History:\n{history_text}\n\nLatest Question: {question}\n\nQuery:"
-            )
-            candidate = self.llm.simple_generate(rewrite_prompt).strip().strip('"').strip("'")
-            # Clean up potential LLM chatter
-            if "Query:" in candidate: candidate = candidate.split("Query:")[-1].strip()
-            if candidate and len(candidate) > 2 and len(candidate.split()) < 10:
-                search_query = candidate
-
-        # 2. RETRIEVAL: Search and Index
+        # 2. Retrieval with Fallback
         try:
             try:
                 article, cache_hit = self._index_article(search_query)
+                # Final Sanity Check: If the article title is wildly different from our subject, try once more with the original question
+                if len(primary_subject) > 3 and primary_subject.lower() not in article["title"].lower() and article["title"].lower() not in primary_subject.lower():
+                    logger.warning(f"Suspected mismatch: Subject '{primary_subject}' vs Article '{article['title']}'. Retrying...")
+                    article, cache_hit = self._index_article(question)
             except Exception:
-                # FALLBACK: If rewritten query fails, try original question
-                logger.info(f"Retrying with original question: {question}")
                 article, cache_hit = self._index_article(question)
 
+            # 3. Context & Generation
             query_embedding = self.embedder.embed_query(question)
-            
-            # 3. SEARCH: High-resolution vector retrieval
             results = self.chroma.search(query_embedding, top_k=15)
             
-            # Lead-Lock: Ensure intro chunks are present
             intro_chunks = [d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0]) if "_0" in id or "_1" in id]
             retrieved_chunks = results["documents"][0]
+            context = "\n\n".join(list(set(intro_chunks + retrieved_chunks)))
             
-            context_list = list(set(intro_chunks + retrieved_chunks))
-            context = "\n\n".join(context_list)
-            
-            # 4. GENERATION: Final Answer
             answer = self.llm.generate(question=question, context=context)
 
             return {
