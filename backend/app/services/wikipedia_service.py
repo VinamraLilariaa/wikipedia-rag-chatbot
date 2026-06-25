@@ -364,8 +364,8 @@ class WikipediaService:
             lines.append("-" * 20)
 
         data_rows = rows[1:] if len(lines) > 0 else rows
-        for row in data_rows[:30]: # Cap to 30 rows
-            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])[:10]]
+        for row in data_rows[:100]: # Increased to 100 rows for deep career stats
+            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])[:12]]
             if cells and any(cells):
                 lines.append(" | ".join(cells))
 
