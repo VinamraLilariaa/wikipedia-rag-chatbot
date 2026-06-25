@@ -7,23 +7,34 @@ from backend.app.services.llm_service import LLMService
 from backend.app.services.wikipedia_service import WikipediaService
 from backend.app.utils.cleaner import TextCleaner
 from backend.app.utils.chunker import TextChunker
+from backend.app.utils.logger import logger
 from backend.app.vectorstore.chroma_store import ChromaStore
 
 
 class RAGService:
+    """
+    Coordinates the complete Retrieval-Augmented Generation (RAG) pipeline.
+    """
 
     def __init__(self):
 
+        logger.info("Initializing RAG Service...")
+
         self.wikipedia = WikipediaService()
+
         self.cleaner = TextCleaner()
+
         self.chunker = TextChunker()
 
         self.embedder = EmbeddingService()
+
         self.chroma = ChromaStore()
 
         self.cache = CacheService()
 
         self.llm = LLMService()
+
+        logger.info("RAG Service initialized successfully.")
 
     def _index_article(self, question: str):
 
@@ -31,92 +42,178 @@ class RAGService:
 
         title = article["title"]
 
+        logger.info(f"Retrieved article: {title}")
+
         cache_hit = self.cache.exists(title)
 
-        # Prevent duplicate indexing
-        if (not cache_hit) and (not self.chroma.article_exists(title)):
+        if cache_hit:
 
-            cleaned = self.cleaner.clean(
-                article["content"]
+            logger.info(f"Cache hit for '{title}'.")
+
+        else:
+
+            logger.info(f"Cache miss for '{title}'.")
+
+        already_indexed = self.chroma.article_exists(title)
+
+        if already_indexed:
+
+            logger.info(
+                f"Article '{title}' already exists in ChromaDB."
             )
 
-            chunks = self.chunker.split(
-                cleaned
-            )
+            return article, True
 
-            embeddings = self.embedder.embed_documents(
-                chunks
-            )
+        logger.info("Cleaning article...")
 
-            ids = [
-                f"{title}_{i}"
-                for i in range(len(chunks))
-            ]
+        cleaned = self.cleaner.clean(
+            article["content"]
+        )
 
-            metadatas = [
-                {
-                    "article": title,
-                    "url": article["url"],
-                    "chunk": i,
-                }
-                for i in range(len(chunks))
-            ]
+        logger.info("Chunking article...")
 
-            self.chroma.add_documents(
-                ids=ids,
-                documents=chunks,
-                embeddings=embeddings,
-                metadatas=metadatas,
-            )
+        chunks = self.chunker.split(
+            cleaned
+        )
 
-            self.cache.add(
-                title=title,
-                url=article["url"],
-                chunk_count=len(chunks),
-            )
+        logger.info(
+            f"Generated {len(chunks)} chunks."
+        )
 
-        return article, cache_hit
+        logger.info("Generating embeddings...")
+
+        embeddings = self.embedder.embed_documents(
+            chunks
+        )
+
+        ids = [
+
+            f"{title}_{i}"
+
+            for i in range(len(chunks))
+        ]
+
+        metadatas = [
+
+            {
+                "article": title,
+                "url": article["url"],
+                "chunk": i,
+            }
+
+            for i in range(len(chunks))
+        ]
+
+        logger.info("Saving vectors to ChromaDB...")
+
+        self.chroma.add_documents(
+
+            ids=ids,
+
+            documents=chunks,
+
+            embeddings=embeddings,
+
+            metadatas=metadatas,
+        )
+
+        self.cache.add(
+
+            title=title,
+
+            url=article["url"],
+
+            chunk_count=len(chunks),
+        )
+
+        logger.info("Article indexed successfully.")
+
+        return article, False
 
     def ask(self, question: str):
+
+        logger.info("=" * 60)
+
+        logger.info(f"User Question: {question}")
 
         start = time.time()
 
         article, cache_hit = self._index_article(question)
 
-        query_embedding = self.embedder.embed_query(question)
+        logger.info("Embedding user query...")
+
+        query_embedding = self.embedder.embed_query(
+            question
+        )
+
+        logger.info("Searching ChromaDB...")
 
         results = self.chroma.search(
+
             query_embedding,
+
             top_k=TOP_K,
         )
 
         if (
+
             "documents" not in results
+
             or not results["documents"]
+
             or not results["documents"][0]
+
         ):
-            raise Exception("No relevant documents found.")
+
+            raise Exception(
+                "No relevant documents found."
+            )
 
         retrieved_chunks = results["documents"][0]
 
-        context = "\n\n".join(retrieved_chunks)
+        logger.info(
+            f"Retrieved {len(retrieved_chunks)} chunks."
+        )
+
+        context = "\n\n".join(
+            retrieved_chunks
+        )
+
+        logger.info("Generating answer using Groq...")
 
         answer = self.llm.generate(
+
             question=question,
+
             context=context,
         )
 
         response_time = round(
+
             time.time() - start,
+
             2,
         )
 
+        logger.info(
+            f"Completed in {response_time} seconds."
+        )
+
+        logger.info("=" * 60)
+
         return {
+
             "answer": answer,
+
             "article": article["title"],
+
             "wikipedia_url": article["url"],
+
             "sources": retrieved_chunks,
+
             "cache_hit": cache_hit,
+
             "response_time": response_time,
-            "model": "qwen3:4b",
+
+            "model": "llama-3.3-70b-versatile",
         }

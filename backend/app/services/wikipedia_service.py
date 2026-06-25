@@ -1,16 +1,22 @@
 import time
 
 import wikipedia
-from requests.exceptions import HTTPError
 
+from backend.app.services.search_service import SearchService
 from backend.app.utils.logger import logger
 
 
 class WikipediaService:
+    """
+    Responsible only for downloading Wikipedia articles.
+    Article selection is delegated to SearchService.
+    """
 
     def __init__(self):
 
         wikipedia.set_lang("en")
+
+        self.search_service = SearchService()
 
     def get_article(self, query: str):
 
@@ -20,22 +26,10 @@ class WikipediaService:
 
             try:
 
-                logger.info(f"Searching Wikipedia for: {query}")
-
-                results = wikipedia.search(
-                    query,
-                    results=5,
-                )
-
-                if not results:
-                    raise ValueError(
-                        f"No Wikipedia article found for '{query}'."
-                    )
-
-                title = results[0]
+                title = self.search_service.search(query)
 
                 logger.info(
-                    f"Selected article: {title}"
+                    f"Downloading article: {title}"
                 )
 
                 page = wikipedia.page(
@@ -44,19 +38,23 @@ class WikipediaService:
                 )
 
                 logger.info(
-                    f"Downloaded article: {page.title}"
+                    f"Downloaded: {page.title}"
                 )
 
                 return {
+
                     "title": page.title,
+
                     "url": page.url,
+
                     "content": page.content,
                 }
 
             except wikipedia.DisambiguationError as e:
 
                 logger.warning(
-                    "Disambiguation page encountered."
+                    f"Disambiguation encountered for '{query}'. "
+                    f"Trying '{e.options[0]}'."
                 )
 
                 page = wikipedia.page(
@@ -65,8 +63,11 @@ class WikipediaService:
                 )
 
                 return {
+
                     "title": page.title,
+
                     "url": page.url,
+
                     "content": page.content,
                 }
 
@@ -76,28 +77,17 @@ class WikipediaService:
                     f"No Wikipedia page found for '{query}'."
                 )
 
-            except HTTPError as e:
+            except Exception as e:
 
-                if "429" in str(e):
-
-                    wait = 2 ** attempt
-
-                    logger.warning(
-                        f"Wikipedia rate limited. Retrying in {wait} seconds..."
-                    )
-
-                    time.sleep(wait)
-
-                else:
-                    raise
-
-            except Exception:
+                logger.warning(
+                    f"Attempt {attempt + 1} failed: {e}"
+                )
 
                 if attempt == retries - 1:
                     raise
 
-                time.sleep(2)
+                time.sleep(2 ** attempt)
 
         raise Exception(
-            "Wikipedia search failed after multiple retries."
+            "Unable to retrieve article after multiple retries."
         )
