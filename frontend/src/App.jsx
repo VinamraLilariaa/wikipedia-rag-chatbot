@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = ''; // Relative for HuggingFace deployment
 
 const SUGGESTIONS = [
   "Virat Kohli Test Stats",
