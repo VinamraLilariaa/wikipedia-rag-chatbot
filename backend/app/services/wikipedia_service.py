@@ -60,9 +60,11 @@ class WikipediaService:
     def __init__(self):
         self.session = requests.Session()
 
-        self.session.headers.update(
-            {"User-Agent": "WikipediaRAGBot/3.0 (educational RAG project)"}
-        )
+        # Standard Wikipedia API requires a descriptive User-Agent 
+        # (Using a format they recommend for bots/apps)
+        self.session.headers.update({
+            "User-Agent": "WikipediaIntelligenceBot/1.0 (https://huggingface.co/vinamra26/wikipedia-rag-chatbot; contact@example.com) library-based RAG"
+        })
 
         # Used only for light, general-purpose word corrections (e.g. common
         # English typos). Proper-noun/name typos are instead resolved by
@@ -96,7 +98,9 @@ class WikipediaService:
                     raise
                 wait_time = (2 ** i) + 0.5
                 time.sleep(wait_time)
-        return None
+        
+        # If we reach here, it means we exhausted retries (likely hitting 429s)
+        raise Exception("Wikipedia API is currently too busy (All retries failed with rate limits). Please try again in a few minutes.")
 
     # -------------------------------------------------
     # Spelling correction
