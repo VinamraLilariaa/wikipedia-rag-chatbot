@@ -28,15 +28,17 @@ class CacheService:
 
     def _save_cache(self, data: dict):
         """
-        Save cache metadata.
+        Save cache metadata. Handle potential write errors on restricted filesystems.
         """
-
-        with open(self.cache_file, "w") as f:
-            json.dump(
-                data,
-                f,
-                indent=4
-            )
+        try:
+            # Ensure parent directory exists
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(self.cache_file, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            from backend.app.utils.logger import logger
+            logger.error(f"Failed to save cache to {self.cache_file}: {e}")
 
     def exists(
         self,
