@@ -1,7 +1,6 @@
 import time
 
 import wikipedia
-import wikipediaapi
 from requests.exceptions import HTTPError
 
 from backend.app.utils.logger import logger
@@ -13,14 +12,7 @@ class WikipediaService:
 
         wikipedia.set_lang("en")
 
-        self.wiki = wikipediaapi.Wikipedia(
-            language="en",
-            user_agent="WikipediaRAGBot/1.0 (tanav-project)",
-        )
-
-    def search_article(self, query: str) -> str:
-
-        logger.info(f"Searching Wikipedia for: {query}")
+    def get_article(self, query: str):
 
         retries = 3
 
@@ -28,16 +20,61 @@ class WikipediaService:
 
             try:
 
-                results = wikipedia.search(query, results=5)
+                logger.info(f"Searching Wikipedia for: {query}")
+
+                results = wikipedia.search(
+                    query,
+                    results=5,
+                )
 
                 if not results:
                     raise ValueError(
                         f"No Wikipedia article found for '{query}'."
                     )
 
-                logger.info(f"Selected article: {results[0]}")
+                title = results[0]
 
-                return results[0]
+                logger.info(
+                    f"Selected article: {title}"
+                )
+
+                page = wikipedia.page(
+                    title,
+                    auto_suggest=False,
+                )
+
+                logger.info(
+                    f"Downloaded article: {page.title}"
+                )
+
+                return {
+                    "title": page.title,
+                    "url": page.url,
+                    "content": page.content,
+                }
+
+            except wikipedia.DisambiguationError as e:
+
+                logger.warning(
+                    "Disambiguation page encountered."
+                )
+
+                page = wikipedia.page(
+                    e.options[0],
+                    auto_suggest=False,
+                )
+
+                return {
+                    "title": page.title,
+                    "url": page.url,
+                    "content": page.content,
+                }
+
+            except wikipedia.PageError:
+
+                raise ValueError(
+                    f"No Wikipedia page found for '{query}'."
+                )
 
             except HTTPError as e:
 
@@ -61,23 +98,6 @@ class WikipediaService:
 
                 time.sleep(2)
 
-        raise Exception("Wikipedia search failed after multiple retries.")
-
-    def get_article(self, query: str):
-
-        title = self.search_article(query)
-
-        page = self.wiki.page(title)
-
-        if not page.exists():
-            raise ValueError(
-                f"Wikipedia page '{title}' does not exist."
-            )
-
-        logger.info(f"Downloaded article: {page.title}")
-
-        return {
-            "title": page.title,
-            "url": page.fullurl,
-            "content": page.text,
-        }
+        raise Exception(
+            "Wikipedia search failed after multiple retries."
+        )
