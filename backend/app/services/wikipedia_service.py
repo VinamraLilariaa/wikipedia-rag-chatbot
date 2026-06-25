@@ -11,6 +11,7 @@ from backend.app.config.settings import MAX_IMAGES
 from backend.app.utils.logger import logger
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
+WIKI_REST_API = "https://en.wikipedia.org/api/rest_v1"
 WIKI_BASE = "https://en.wikipedia.org"
 
 SECTION_STOP_WORDS = (
@@ -44,25 +45,31 @@ class WikipediaService:
 
     def __init__(self):
         self.session = requests.Session()
+        # Production headers to avoid data-center blocking
         self.session.headers.update({
-            "User-Agent": "WikipediaIntelligenceBot/1.0 (Educational RAG Project)"
+            "User-Agent": "WikipediaIntelligenceBot/1.0 (Contact: team@example.com; RAG Project)",
+            "Accept-Encoding": "gzip"
         })
         self._spell = SpellChecker()
         self._query_cache = {}
 
-    def _request_with_retry(self, method, url, max_retries=3, **kwargs):
+    def _request_with_retry(self, method, url, max_retries=5, **kwargs):
         for i in range(max_retries):
             try:
                 response = self.session.request(method, url, **kwargs)
                 if response.status_code == 429:
-                    time.sleep((2 ** i) + 1)
+                    # Aggressive backoff for rate limits
+                    wait = (5 ** i) + 2
+                    logger.warning(f"Rate limited. Waiting {wait}s...")
+                    time.sleep(wait)
                     continue
                 response.raise_for_status()
                 return response
-            except requests.exceptions.RequestException:
+            except Exception as e:
                 if i == max_retries - 1:
+                    logger.error(f"Final retry failed: {e}")
                     raise
-                time.sleep((2 ** i) + 0.5)
+                time.sleep(2 ** i)
         return None
 
     def _correct_common_words(self, query: str) -> str:
@@ -117,26 +124,50 @@ class WikipediaService:
         return result
 
     def _fetch_page_html(self, title: str) -> str:
-        params = {"action": "parse", "page": title, "format": "json", "prop": "text", "redirects": 1}
-        response = self._request_with_retry("GET", WIKI_API, params=params, timeout=15)
-        data = response.json()
-        if "error" in data:
-            raise ValueError(f"Could not load article '{title}'.")
-        return data["parse"]["text"]["*"]
+        # Modern REST API for cleaner HTML and better performance
+        encoded_title = quote(title.replace(' ', '_'))
+        url = f"{WIKI_REST_API}/page/html/{encoded_title}"
+        response = self._request_with_retry("GET", url, timeout=15)
+        return response.text
 
     def get_article(self, query: str) -> dict:
         search_result = self.search_article(query)
         title = search_result["title"]
-        html = self._fetch_page_html(title)
-        soup = BeautifulSoup(html, "html.parser")
         
+        try:
+            html = self._fetch_page_html(title)
+            soup = BeautifulSoup(html, "html.parser")
+            
+            # Use REST API for images as well if possible (metadata endpoint)
+            metadata_url = f"{WIKI_REST_API}/page/metadata/{quote(title.replace(' ', '_'))}"
+            metadata_resp = self.session.get(metadata_url, timeout=5)
+            
+            return {
+                "title": title,
+                "url": f"{WIKI_BASE}/wiki/{quote(title.replace(' ', '_'))}",
+                "content": self._extract_content(soup),
+                "images": self._extract_images(soup, title),
+                "spelling_corrected": search_result["spelling_corrected"],
+                "matched_query": search_result["matched_query"],
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch from REST API: {e}")
+            # Fallback to action API if REST fails
+            return self._get_article_fallback(title, search_result)
+
+    def _get_article_fallback(self, title: str, search_meta: dict) -> dict:
+        params = {"action": "parse", "page": title, "format": "json", "prop": "text", "redirects": 1}
+        response = self._request_with_retry("GET", WIKI_API, params=params, timeout=15)
+        data = response.json()
+        html = data["parse"]["text"]["*"]
+        soup = BeautifulSoup(html, "html.parser")
         return {
             "title": title,
             "url": f"{WIKI_BASE}/wiki/{quote(title.replace(' ', '_'))}",
             "content": self._extract_content(soup),
             "images": self._extract_images(soup, title),
-            "spelling_corrected": search_result["spelling_corrected"],
-            "matched_query": search_result["matched_query"],
+            "spelling_corrected": search_meta["spelling_corrected"],
+            "matched_query": search_meta["matched_query"],
         }
 
     def _extract_content(self, soup: BeautifulSoup) -> str:
