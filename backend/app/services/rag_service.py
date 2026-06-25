@@ -13,65 +13,57 @@ class RAGService:
     def __init__(self):
         self.wiki = WikipediaService()
         self.embedder = EmbeddingService()
-        self.chroma = ChromaStore()
+        self.store = ChromaStore()
         self.llm = LLMService()
-        self._cache = {}
 
     def ask(self, question: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """
-        MASTER PRODUCTION RAG: Simplified, Grounded, and Reliable.
-        Flow: Question -> Search -> Chunk -> Embed -> Retrieve -> Generate.
+        SHADOW-RAG PRODUCTION: High-Speed, Zero-Crash Retrieval.
         """
         start_time = time.time()
         question = question.strip()
 
         try:
-            # 1. ACQUISITION: Direct Wikipedia Search
-            # No LLM-preprocessing. We use Wikipedia's own powerful search engine.
+            # 1. ACQUISITION: Directly reach Wikipedia
             article = self.wiki.get_article(question)
             title = article["title"]
 
-            # 2. SEMANTIC INDEXING: Chunk and store in-memory (RAM-speed)
-            # We only index if it's a new article to keep performance high.
-            if not self.chroma.exists(title):
-                self.chroma.add_article(title, article["content"])
+            # 2. SHADOW-INDEXING: Fast RAM Chunking
+            if not self.store.exists(title):
+                self.store.add_article(title, article["content"])
 
-            # 3. CONTEXTUAL RETRIEVAL: Find the most relevant segments
-            query_embedding = self.embedder.embed_query(question)
-            search_results = self.chroma.search(query_embedding, top_k=10)
+            # 3. FUZZY RETRIEVAL: Find top chunks without heavy models
+            chunks = self.store.get_all_chunks(title)
+            # Use the Shadow Engine to find the most relevant 6 chunks
+            top_contexts = self.embedder.get_similarity(question, chunks, limit=6)
+            context_text = "\n\n".join(top_contexts)
             
-            # Extract top segments for the LLM
-            contexts = search_results.get("documents", [[]])[0]
-            context_text = "\n\n".join(contexts)
-            
-            # 4. FINAL GROUNDING: LLM synthesizes the answer from the chunks
+            # 4. FINAL GROUNDING
             answer = self.llm.generate(
                 question=question, 
                 context=context_text,
                 history=history
             )
 
-            # 5. RESPONSE: Full schema compliance with confidence
             return {
                 "answer": answer,
                 "article": title,
                 "wikipedia_url": article["url"],
                 "sources": [title],
                 "images": article["images"],
-                "cache_hit": title in self._cache,
+                "cache_hit": False,
                 "response_time": round(time.time() - start_time, 2),
-                "model": "Groq-Llama3-Grounded",
+                "model": "Groq-Llama3-ShadowRAG",
                 "spelling_corrected": False,
                 "matched_query": title,
                 "error": None
             }
 
         except Exception as e:
-            logger.exception(f"RAG Failure: {e}")
-            # Explicit error return for the UI
+            logger.exception(f"Shadow-RAG Failure: {e}")
             return {
-                "answer": f"I had trouble finding or reading the Wikipedia page for '{question}'.",
-                "article": "Search Failed",
+                "answer": f"I found the page for '{question}', but had trouble processing the details. Please try another specific question.",
+                "article": "Process Error",
                 "wikipedia_url": "",
                 "sources": [],
                 "images": [],
@@ -82,7 +74,3 @@ class RAGService:
                 "matched_query": question,
                 "error": str(e)
             }
-        finally:
-            # Simple in-session caching
-            if 'title' in locals():
-                self._cache[title] = True

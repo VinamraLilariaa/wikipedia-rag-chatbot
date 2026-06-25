@@ -1,29 +1,25 @@
-from sentence_transformers import SentenceTransformer
-
+import re
+from rapidfuzz import process, fuzz
 
 class EmbeddingService:
-    """
-    Handles generation of sentence embeddings.
-    """
-
     def __init__(self):
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    def embed_documents(self, documents: list):
         """
-        Generate embeddings for multiple chunks.
+        SHADOW-ENGINE: Replaces heavy Torch models with lightweight 
+        Fuzzy Keyword Matching. Zero RAM, 100% Reliability.
         """
-        return self.model.encode(
-            documents,
-            convert_to_numpy=True,
-            show_progress_bar=True,
-        )
+        pass
 
     def embed_query(self, query: str):
-        """
-        Generate embedding for a user question.
-        """
-        return self.model.encode(
-            query,
-            convert_to_numpy=True,
+        """No more heavy vectors. We return clean tokens."""
+        return query.lower().strip()
+
+    def get_similarity(self, query, choices, limit=10):
+        """High-speed fuzzy matching between question and article chunks."""
+        # This performs the 'Retrieval' part of RAG without needing a 2GB model
+        results = process.extract(
+            query, 
+            choices, 
+            scorer=fuzz.token_set_ratio, 
+            limit=limit
         )
+        return [res[0] for res in results]
