@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_URL = ''; // Relative for HuggingFace deployment
+// Using window.location.origin ensures we always talk to the right port on HuggingFace
+const API_URL = window.location.origin;
 
 const SUGGESTIONS = [
   "Virat Kohli Test Stats",
@@ -33,10 +34,14 @@ function App() {
     setLoading(true);
 
     try {
+      // Increased timeout to 60s for HuggingFace stability
       const response = await axios.post(`${API_URL}/api/ask`, {
         question: trimmed,
-        history: messages.slice(-5)
-      });
+        history: messages.slice(-5).map(m => ({
+          role: m.role,
+          content: m.role === 'user' ? m.text : m.data?.answer || ""
+        }))
+      }, { timeout: 60000 });
       
       const botMsg = { 
         role: 'bot', 
@@ -51,7 +56,9 @@ function App() {
       };
       setMessages(prev => [...prev, botMsg]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'bot', data: { error: "Service unavailable. Please retry." } }]);
+      console.error("AXIOS ERROR:", err);
+      const errorMsg = err.response?.data?.detail || "The knowledge service is taking a moment to wake up. Please try again in 10 seconds.";
+      setMessages(prev => [...prev, { role: 'bot', data: { error: errorMsg } }]);
     } finally {
       setLoading(false);
     }
