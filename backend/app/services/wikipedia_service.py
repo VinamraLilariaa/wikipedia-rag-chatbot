@@ -1,58 +1,74 @@
 import requests
+import re
 import logging
-import random
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
+WIKI_API = "https://en.wikipedia.org/w/api.php"
+WIKI_BASE = "https://en.wikipedia.org"
+
 class WikipediaService:
     def __init__(self):
         self.session = requests.Session()
-        # Using a high-trust Search Engine referral signature
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Accept": "application/json"
-        }
+        self.session.headers.update({
+            "User-Agent": "WikiIntelBot/1.0 (https://huggingface.co; educational research)",
+            "Accept-Encoding": "gzip",
+        })
 
     def get_article(self, query: str) -> dict:
         """
-        THE PROXY BRIDGE: Uses the DuckDuckGo Knowledge API to bypass 
-        Wikipedia's data-center IP blocks. 100% Reliable.
+        Fetch full Wikipedia article via the Action API.
+        Step 1: Search for the best matching title.
+        Step 2: Fetch full extract + thumbnail.
         """
-        # Step 1: Query the 'Zero-Click' Intelligence API
-        proxy_url = f"https://api.duckduckgo.com/?q={quote(query)}&format=json&pretty=1&no_html=1&skip_disambig=1"
-        
-        try:
-            resp = self.session.get(proxy_url, headers=self.headers, timeout=12)
-            data = resp.json()
-            
-            # Extract the Grounded Knowledge
-            content = data.get("AbstractText", "")
-            title = data.get("Heading", query)
-            wiki_url = data.get("AbstractURL", f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}")
-            image_url = data.get("Image", "")
+        # Step 1: Search
+        search_params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "format": "json",
+            "srlimit": 1,
+        }
+        search_resp = self.session.get(WIKI_API, params=search_params, timeout=10)
+        search_resp.raise_for_status()
+        results = search_resp.json().get("query", {}).get("search", [])
 
-            # If the proxy returns empty (rare), use the emergency REST backup
-            if not content:
-                logger.warning("Proxy returned empty, trying Emergency REST...")
-                rest_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(title.replace(' ', '_'))}"
-                rest_resp = self.session.get(rest_url, headers=self.headers, timeout=10)
-                if rest_resp.status_code == 200:
-                    rest_data = rest_resp.json()
-                    content = rest_data.get("extract", "")
-                    title = rest_data.get("title", title)
-                    image_url = rest_data.get("thumbnail", {}).get("url", image_url)
+        if not results:
+            raise ValueError(f"No Wikipedia article found for '{query}'")
 
-            if not content:
-                raise ValueError(f"No grounded knowledge found for '{query}'.")
+        title = results[0]["title"]
+
+        # Step 2: Fetch full extract + image
+        fetch_params = {
+            "action": "query",
+            "prop": "extracts|pageimages|info",
+            "explaintext": True,       # plain text, no HTML
+            "exsectionformat": "plain",
+            "titles": title,
+            "format": "json",
+            "inprop": "url",
+            "pithumbsize": 500,
+            "redirects": 1,
+        }
+        fetch_resp = self.session.get(WIKI_API, params=fetch_params, timeout=15)
+        fetch_resp.raise_for_status()
+        pages = fetch_resp.json().get("query", {}).get("pages", {})
+
+        for pid, page in pages.items():
+            if "extract" not in page:
+                raise ValueError(f"Wikipedia returned no content for '{title}'")
+
+            content = page["extract"]  # Full plain-text article
+            images = []
+            if "thumbnail" in page:
+                images = [{"url": page["thumbnail"]["source"], "caption": title}]
 
             return {
-                "title": title,
-                "url": wiki_url,
-                "summary": content,
-                "content": content,
-                "images": [{"url": image_url, "caption": title}] if image_url else []
+                "title": page["title"],
+                "url": page.get("fullurl", f"{WIKI_BASE}/wiki/{quote(title.replace(' ', '_'))}"),
+                "content": content,   # Full article text — NOT just a summary
+                "images": images,
             }
-        except Exception as e:
-            logger.error(f"Intelligence Proxy Failure: {e}")
-            raise
+
+        raise ValueError(f"Could not parse Wikipedia response for '{title}'")
