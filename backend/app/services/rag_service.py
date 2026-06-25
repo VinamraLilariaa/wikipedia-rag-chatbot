@@ -49,10 +49,15 @@ class RAGService:
             article, cache_hit = self._index_article(search_query)
             query_embedding = self.embedder.embed_query(question)
             
-            # High-resolution retrieval for statistical accuracy
+            # High-resolution retrieval
             results = self.chroma.search(query_embedding, top_k=15)
             
-            context = "\n\n".join(results["documents"][0])
+            # Lead-Lock: Always include the first few chunks (Intro) to ensure basic facts are present
+            intro_chunks = [d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0]) if "_0" in id or "_1" in id]
+            retrieved_chunks = results["documents"][0]
+            
+            context_list = list(set(intro_chunks + retrieved_chunks))
+            context = "\n\n".join(context_list)
             answer = self.llm.generate(question=question, context=context)
 
             return {

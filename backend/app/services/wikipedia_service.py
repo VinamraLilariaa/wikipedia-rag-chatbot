@@ -175,18 +175,22 @@ class WikipediaService:
         if not body: return ""
         content = []
         skip = False
+        # Attach the section heading to the content to help retrieval
+        current_section = "Intro"
         for tag in body.find_all(recursive=False):
             if tag.name in ("h2", "h3"):
                 h = tag.get_text(" ", strip=True)
                 skip = any(s in h.lower() for s in SECTION_STOP_WORDS)
-                if not skip: content.append(f"## {h}")
+                if not skip: 
+                    current_section = h
+                    content.append(f"## {h}")
             elif not skip:
                 if tag.name == "p":
                     t = tag.get_text(" ", strip=True)
-                    if len(t) > 20: content.append(t)
+                    if len(t) > 20: content.append(f"[Section: {current_section}] {t}")
                 elif tag.name == "table":
                     t = self._table_to_text(tag)
-                    if t: content.append(t)
+                    if t: content.append(f"[Section: {current_section} Table] {t}")
         return "\n\n".join(content)
 
     def _table_to_text(self, table) -> str:
