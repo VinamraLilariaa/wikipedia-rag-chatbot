@@ -1,64 +1,49 @@
 import requests
-import logging
-import time
 import re
+import logging
 from urllib.parse import quote
 
-from backend.app.utils.logger import logger
-
-WIKI_REST_API = "https://en.wikipedia.org/api/rest_v1"
-WIKI_BASE = "https://en.wikipedia.org"
+logger = logging.getLogger(__name__)
 
 class WikipediaService:
     def __init__(self):
         self.session = requests.Session()
-        # Descriptive User-Agent for HuggingFace compliance
         self.session.headers.update({
-            "User-Agent": "WikipediaRAGBot/2.0 (Contact: developer@huggingface.spaces; Research)",
-            "Accept": "application/json"
+            "User-Agent": "WikiIntel/1.0 (Research Project; Contact: dev@example.com)"
         })
 
     def get_article(self, query: str) -> dict:
         """
-        REST-API Express: Optimized for high-speed RAG and production stability.
+        Ultra-Stable REST Retrieval.
         """
-        # 1. Direct Summary Hit (Speed Priority)
-        search_url = f"{WIKI_REST_API}/page/summary/{quote(query.strip().replace(' ', '_'))}"
-        resp = self.session.get(search_url, timeout=10)
-        
-        if resp.status_code != 200:
-            # Fallback to Action API search if direct REST hit misses
-            search_api = "https://en.wikipedia.org/w/api.php"
-            params = {"action": "query", "list": "search", "srsearch": query, "format": "json"}
-            search_data = self.session.get(search_api, params=params).json()
-            results = search_data.get("query", {}).get("search", [])
-            if not results: raise ValueError(f"No result found for '{query}'")
+        try:
+            # 1. Direct Summary Hit
+            search_title = query.strip().replace(' ', '_')
+            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(search_title)}"
+            resp = self.session.get(url, timeout=10)
             
-            title = results[0]["title"]
-            search_url = f"{WIKI_REST_API}/page/summary/{quote(title.replace(' ', '_'))}"
-            resp = self.session.get(search_url, timeout=10)
+            if resp.status_code != 200:
+                # Fallback to search
+                search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(query)}&format=json"
+                search_data = self.session.get(search_url).json()
+                results = search_data.get("query", {}).get("search", [])
+                if not results: raise ValueError(f"No results for {query}")
+                search_title = results[0]["title"].replace(' ', '_')
+                url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(search_title)}"
+                resp = self.session.get(url, timeout=10)
+            
             data = resp.json()
-        else:
-            data = resp.json()
-
-        title = data.get("title", query)
-        summary = data.get("extract", "")
-        
-        # 2. Fetch HTML for Deep Context Chunks
-        html_url = f"{WIKI_REST_API}/page/html/{quote(title.replace(' ', '_'))}"
-        # We use a longer timeout for HTML to ensure we get the full page
-        html_resp = self.session.get(html_url, timeout=15)
-        
-        content = summary
-        if html_resp.status_code == 200:
-            # High-speed HTML text extraction
-            content = re.sub(r'<[^>]+>', ' ', html_resp.text)
-            content = re.sub(r'\s+', ' ', content).strip()
-
-        return {
-            "title": title,
-            "url": f"{WIKI_BASE}/wiki/{quote(title.replace(' ', '_'))}",
-            "summary": summary,
-            "content": content[:60000], # Optimized context size for RAG stabilization
-            "images": [{"url": data["thumbnail"]["url"], "caption": title}] if "thumbnail" in data else []
-        }
+            title = data.get("title", query)
+            
+            # 2. Extract and Clean Text
+            extract = data.get("extract", "")
+            
+            return {
+                "title": title,
+                "url": f"https://en.wikipedia.org/wiki/{quote(search_title)}",
+                "content": extract,
+                "images": [{"url": data["thumbnail"]["url"], "caption": title}] if "thumbnail" in data else []
+            }
+        except Exception as e:
+            logger.error(f"Wiki Error: {e}")
+            raise
