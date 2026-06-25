@@ -68,3 +68,25 @@ Answer:
         )
 
         return response.choices[0].message.content.strip()
+
+    def simple_generate(self, prompt: str) -> str:
+        """
+        Simple prompt-to-response generation without specific RAG formatting.
+        """
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model=GROQ_MODEL,
+                temperature=0.1,
+                max_tokens=100,
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as e:
+            from backend.app.utils.logger import logger
+            logger.error(f"Groq simple generation failed: {e}")
+            return ""

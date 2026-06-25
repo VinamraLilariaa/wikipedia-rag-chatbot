@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class AskRequest(BaseModel):
     question: str
+    history: Optional[List[dict]] = None
 
 
 class ImageItem(BaseModel):

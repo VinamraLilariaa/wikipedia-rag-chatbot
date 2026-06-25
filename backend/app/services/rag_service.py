@@ -141,16 +141,34 @@ class RAGService:
 
         return article, False
 
-    def ask(self, question: str):
-
+    def ask(self, question: str, history: list = None):
         logger.info("=" * 60)
-
         logger.info(f"User Question: {question}")
-
+        
         start = time.time()
+        search_query = question
+
+        # --- Contextual Query Rewriting ---
+        if history and len(history) > 0:
+            logger.info("Analyzing history for context...")
+            history_text = "\n".join([
+                f"{m['role']}: {m.get('text', m.get('data', {}).get('answer', ''))}" 
+                for m in history[-3:] # Last 3 turns
+            ])
+            
+            rewrite_prompt = (
+                "Based on the following conversation history, rewrite the latest question to be a standalone search query "
+                "that includes all necessary names or entities. If the question is already standalone, return it as is.\n\n"
+                f"History:\n{history_text}\n\nLatest Question: {question}\n\nStandalone Search Query:"
+            )
+            
+            candidate = self.llm.simple_generate(rewrite_prompt).strip().strip('"')
+            if candidate and len(candidate) > 5:
+                logger.info(f"Rewrote query: '{question}' -> '{candidate}'")
+                search_query = candidate
 
         try:
-            article, cache_hit = self._index_article(question)
+            article, cache_hit = self._index_article(search_query)
         except Exception as e:
             if "429" in str(e):
                 logger.error(f"Rate limit exceeded while processing '{question}': {e}")

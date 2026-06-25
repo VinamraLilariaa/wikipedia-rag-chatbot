@@ -43,7 +43,7 @@ def ask(request: AskRequest):
             rag = RAGService()
             print("RAG Service Created!")
 
-        return rag.ask(question)
+        return rag.ask(question, history=request.history)
 
     except ValueError as e:
         # Expected, user-facing failures: e.g. no matching Wikipedia article.

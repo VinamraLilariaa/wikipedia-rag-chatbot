@@ -230,6 +230,7 @@ function App() {
         `${API_URL}/ask`,
         {
           question: trimmed,
+          history: messages.slice(-5) // Send the last 5 messages for context
         }
       );
 
