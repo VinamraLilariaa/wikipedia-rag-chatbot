@@ -1,7 +1,6 @@
 import time
 import logging
 import traceback
-import re
 
 from backend.app.services.wikipedia_service import WikipediaService
 from backend.app.services.embedding_service import EmbeddingService
@@ -19,44 +18,46 @@ class RAGService:
 
     def ask(self, question: str, history: list = None):
         """
-        PRODUCTION-GRADE RAG PIPELINE: 
-        Handles all edge cases and ensures 100% UI synchronicity.
+        OFFICIAL REST-RAG PIPELINE: 
+        1. Discover Subject
+        2. Fetch via REST API
+        3. Index into ChromaDB
+        4. Vector Retrieval
+        5. Grounded Generation
         """
         start = time.time()
         
-        # 1. TOPIC DISCOVERY (With instant fallback)
+        # 1. Topic Identification
         try:
-            history_text = "\n".join([f"{m['role']}: {m['text'] if 'text' in m else m.get('data', {}).get('answer', '')}" for m in (history or [])[-3:]])
-            topic_prompt = f"Identify the Wikipedia subject. History:\n{history_text}\nQuestion: {question}\nReturn ONLY the name."
-            target_topic = self.llm.simple_generate(topic_prompt).strip().strip('"').strip("'")
-            if not target_topic or len(target_topic) < 2: target_topic = question
+            topic_prompt = f"Identify the main Wikipedia subject of this question. Return only the name.\nQuestion: {question}"
+            target_topic = self.llm.simple_generate(topic_prompt).strip()
+            if not target_topic: target_topic = question
         except:
             target_topic = question
 
         try:
-            # 2. DATA ACQUISITION
+            # 2. REST API Data Acquisition
             article = self.wiki.get_article(target_topic)
             title = article["title"]
             
-            # 3. HYBRID PIPELINE (VDB with Direct Injection Fallback)
-            context = ""
+            # 3. RAG CORE: Vector Indexing & Search
             try:
-                # Check for existing knowledge to save time
                 if not self.chroma.exists(title):
+                    # Indexing the REST content (Summary + Body)
                     self.chroma.add_article(title, article["content"])
                 
                 query_embedding = self.embedder.embed_query(question)
-                results = self.chroma.search(query_embedding, top_k=15)
+                results = self.chroma.search(query_embedding, top_k=10)
                 context = "\n\n".join(results.get("documents", [[]])[0])
                 
-                # If quality is low, augment with lead summary
-                if len(context) < 500:
-                    context = article["content"][:30000]
+                # Double-check: ensure the summary is always in context for accuracy
+                if article["summary"] not in context:
+                    context = f"SUMMARY: {article['summary']}\n\n" + context
             except Exception as vdb_err:
-                logger.warning(f"VDB Error, falling back to direct context: {vdb_err}")
-                context = article["content"][:40000]
+                logger.error(f"VDB Fallback triggered: {vdb_err}")
+                context = article["content"][:30000]
 
-            # 4. FINAL GROUNDED ANSWER
+            # 4. Final Answer Generation
             answer = self.llm.generate(question=question, context=context)
 
             return {
@@ -66,18 +67,16 @@ class RAGService:
                 "sources": [title],
                 "images": article["images"],
                 "matched_query": target_topic,
-                "error": None, # Explicitly tell UI there is NO error
-                "response_time": round(time.time() - start, 2),
+                "error": None
             }
         except Exception as e:
-            logger.error(f"Global Pipeline Failure: {e}")
+            logger.error(f"REST-RAG Critical Error: {e}")
             return {
-                "answer": "Maintenance required. We're having trouble connecting to Wikipedia's library at the moment.",
-                "article": "Connection Error",
+                "answer": "I'm having trouble connecting to Wikipedia sources. Please try again in 30 seconds.",
+                "article": "Connection Issue",
                 "wikipedia_url": "",
                 "sources": [],
                 "images": [],
                 "matched_query": target_topic,
-                "error": "The knowledge base is temporarily unreachable. Please try again in 30 seconds.",
-                "response_time": 0,
+                "error": "Wikipedia REST API Unavailable"
             }
