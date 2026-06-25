@@ -35,10 +35,12 @@ class RAGService:
         if history and len(history) > 0:
             history_text = "\n".join([f"{m['role']}: {m.get('text', m.get('data', {}).get('answer', ''))}" for m in history[-3:]])
             rewrite_prompt = (
-                "You are a search query generator. Based on the history, identify the subject and rewrite the latest question as a standalone search query.\n"
+                "You are an AI search optimizer. Given the conversation, identify the main PERSON or ENTITY being discussed.\n"
+                "Rewrite the latest question as a standalone search query for Wikipedia.\n"
                 "STRICT RULES:\n"
-                "1. Replace pronouns with the subject's full name.\n"
-                "2. RETURN ONLY THE QUERY. NO CHATTER. NO QUOTES.\n\n"
+                "1. Always include the FULL NAME of the subject in the query.\n"
+                "2. Do NOT mention 'List of' or 'Table of' unless explicitly asked.\n"
+                "3. RETURN ONLY THE QUERY. NO CHATTER.\n\n"
                 f"History:\n{history_text}\n\nLatest Question: {question}\n\nQuery:"
             )
             candidate = self.llm.simple_generate(rewrite_prompt).strip().strip('"').strip("'")

@@ -114,7 +114,17 @@ class WikipediaService:
         if not results:
             raise ValueError(f"No Wikipedia article found for '{query}'.")
 
-        title = results[0]["title"]
+        # PRODUCTION FIX: Filter results to prefer main articles over "List of..." or sub-pages
+        best_match = results[0]
+        for res in results[:3]:
+            title = res["title"]
+            # If the query is a person's name, and we found an exact or very close title, 
+            # and there's another "List of..." result, stay with the main person.
+            if not any(word in title.lower() for word in ["list of", "records", "statistics", "timeline"]):
+                best_match = res
+                break
+
+        title = best_match["title"]
         result = {
             "title": title,
             "matched_query": title,
