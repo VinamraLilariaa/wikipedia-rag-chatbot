@@ -35,38 +35,46 @@ class RAGService:
     def ask(self, question: str, history: list = None):
         start = time.time()
         
-        # 1. Subject Extraction & Locking
-        # Identify the primary subject from the ENTIRE conversation to prevent "Millennials" drift
+        # 1. Subject Locking
         context_prompt = (
-            "Based on this conversation history and the latest question, what is the single most likely SUBJECT (person or entity) being discussed?\n"
+            "Based on the history and question, what is the primary SUBJECT (person/entity)?\n"
             "History:\n" + ("\n".join([f"{m['role']}: {m['text'] if 'text' in m else ''}" for m in (history or [])[-5:]])) + "\n"
             f"Question: {question}\n\n"
-            "Return ONLY the name of the subject. NO OTHER TEXT."
+            "Return ONLY the name."
         )
         primary_subject = self.llm.simple_generate(context_prompt).strip().strip('"').strip("'")
-        
-        # If the AI identified a clear subject, use it for the search
         search_query = primary_subject if len(primary_subject) > 2 else question
 
-        # 2. Retrieval with Fallback
         try:
+            # 2. Retrieval
             try:
                 article, cache_hit = self._index_article(search_query)
-                # Final Sanity Check: If the article title is wildly different from our subject, try once more with the original question
-                if len(primary_subject) > 3 and primary_subject.lower() not in article["title"].lower() and article["title"].lower() not in primary_subject.lower():
-                    logger.warning(f"Suspected mismatch: Subject '{primary_subject}' vs Article '{article['title']}'. Retrying...")
-                    article, cache_hit = self._index_article(question)
             except Exception:
                 article, cache_hit = self._index_article(question)
 
-            # 3. Context & Generation
             query_embedding = self.embedder.embed_query(question)
-            results = self.chroma.search(query_embedding, top_k=15)
+            results = self.chroma.search(query_embedding, top_k=20) # Deep vision
             
-            intro_chunks = [d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0]) if "_0" in id or "_1" in id]
+            # 3. Memory Ordering (CRITICAL)
+            # Find the intro chunks and put them at the TOP of the context
+            all_chunks = []
+            id_to_chunk = {id: d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0])}
+            
+            # Sort IDs to find the beginning of the article
+            sorted_ids = sorted(id_to_chunk.keys(), key=lambda x: int(x.split('_')[-1]) if '_' in x else 0)
+            
+            # Always take the first 3 chunks (Intro/Infobox) regardless of similarity
+            intro_ids = [id for id in sorted_ids if int(id.split('_')[-1]) < 3]
+            intro_chunks = [id_to_chunk[id] for id in intro_ids]
+            
+            # Take rest of the retrieved chunks
             retrieved_chunks = results["documents"][0]
-            context = "\n\n".join(list(set(intro_chunks + retrieved_chunks)))
             
+            # Final ordered context: Intro FIRST, then relevant chunks
+            context_list = intro_chunks + [c for c in retrieved_chunks if c not in intro_chunks]
+            context = "\n\n".join(context_list)
+            
+            # 4. Generation
             answer = self.llm.generate(question=question, context=context)
 
             return {
@@ -84,7 +92,7 @@ class RAGService:
         except Exception as e:
             logger.error(f"RAG Error: {e}")
             return {
-                "answer": "I hit a snag while searching Wikipedia. Please try a slightly different question.",
+                "answer": "I hit a snag while searching Wikipedia. Please try a different question.",
                 "article": "Error",
                 "wikipedia_url": "",
                 "sources": [],
