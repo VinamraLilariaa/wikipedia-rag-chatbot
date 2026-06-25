@@ -196,7 +196,7 @@ class RAGService:
 
             query_embedding,
 
-            top_k=TOP_K,
+            top_k=12,
         )
 
         if (

@@ -130,10 +130,7 @@ function BotMessage({ data }) {
             {data.spellingCorrected &&
               data.matchedQuery && (
                 <p className="spelling-note">
-                  Showing results for{" "}
-                  <strong>
-                    "{data.matchedQuery}"
-                  </strong>
+                  Results for <strong>"{data.matchedQuery}"</strong>
                 </p>
               )}
 
@@ -143,35 +140,6 @@ function BotMessage({ data }) {
 
             <ImageGallery
               images={data.images}
-            />
-
-            <div className="meta-row">
-              <a
-                className="meta-chip meta-link"
-                href={data.wikipedia_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                📖 {data.article}
-              </a>
-
-              <span className="meta-chip">
-                ⚡ {data.response_time}s
-              </span>
-
-              <span className="meta-chip">
-                {data.cache_hit
-                  ? "💾 Cached"
-                  : "🆕 Freshly indexed"}
-              </span>
-
-              <span className="meta-chip">
-                🤖 {data.model}
-              </span>
-            </div>
-
-            <SourcesPanel
-              sources={data.sources}
             />
           </>
         )}
