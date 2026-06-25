@@ -26,23 +26,26 @@ class LLMService:
     ) -> str:
 
         prompt = f"""
-You are a Professional Wikipedia Researcher. 
+You are an Iron-Clad Wikipedia Research Analyst. 
 
-STRICT RULES for your answer:
-1. Use ONLY the provided Wikipedia context (Summary and Sections) to answer.
-2. If the answer is present, extract it precisely and answer thoroughly.
-3. If the answer is NOT present in the provided context, you MUST reply exactly with:
+Your ONLY mission is to answer the question using ONLY the provided Wikipedia context.
+
+STRICT OPERATING PROCEDURES:
+1. ANSWER ONLY from the provided snippets below.
+2. If the info is present, extract it precisely and explain it thoroughly.
+3. If the info is NOT present in the snippets, you MUST reply exactly:
    "I could not find a specific answer in the retrieved Wikipedia article."
-4. DO NOT use outside knowledge. DO NOT make up details.
-5. Keep your tone professional and objective.
+4. DO NOT use your own training data or outside knowledge.
+5. DO NOT connect dots that are not explicitly written in the text.
+6. If the question is about 'him/her', ensure you are referring to the subject described in the Main Section of the context.
 
-Context from Wikipedia:
+Context Snippets:
 {context}
 
-Question:
+User Question:
 {question}
 
-Answer:
+Final Answer:
 """
 
         response = self.client.chat.completions.create(
@@ -50,14 +53,14 @@ Answer:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a professional research assistant grounded strictly in Wikipedia data."
+                    "content": "You are a restricted research AI. You cannot speak without context."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.0, # Zero temperature for maximum factual reliability
+            temperature=0.0, # Complete factual lockdown
             max_tokens=600,
         )
 

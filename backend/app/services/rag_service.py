@@ -22,72 +22,90 @@ class RAGService:
     def ask(self, question: str, history: list = None):
         start = time.time()
         
-        # 1. TOPIC DISCOVERY: Identify the core Wikipedia article for this conversation
+        # 1. ADVANCED TOPIC DISCOVERY: Identify Primary and Secondary subjects
         history_text = "\n".join([f"{m['role']}: {m['text'] if 'text' in m else m.get('data', {}).get('answer', '')}" for m in (history or [])[-5:]])
         
         topic_prompt = (
-            "You are a Research Director. Based on the conversation, identify the SINGLE most important Wikipedia TOPIC we are discussing.\n"
-            "If the question is about a specific detail (like 'launch date'), identify the PARENT entity (like 'Apollo 11').\n"
+            "You are a Research Director. Identify the SUBJECTS of this conversation.\n"
+            "Return the names of the TWO most relevant Wikipedia articles, separated by a comma (e.g., 'Virat Kohli, Cricket').\n"
+            "If only one subject exists, return just one name.\n"
+            "If 'he' or 'she' is used, include the full name of the person they refer to.\n"
             f"History:\n{history_text}\n"
             f"Current Question: {question}\n\n"
-            "Return ONLY the plain name of the Wikipedia article. No other text."
+            "Names:"
         )
-        target_topic = self.llm.simple_generate(topic_prompt).strip().strip('"').strip("'")
-        # Self-correction: if the AI gives a full sentence, take the last capitalized part or just the main subject
-        if "topic is" in target_topic.lower(): target_topic = target_topic.split("is")[-1].strip()
+        subjects_raw = self.llm.simple_generate(topic_prompt).strip().strip('"').strip("'")
+        if "Names:" in subjects_raw: subjects_raw = subjects_raw.split("Names:")[-1].strip()
+        
+        target_topics = [s.strip() for s in subjects_raw.split(",") if len(s.strip()) > 2][:2]
+        if not target_topics: target_topics = [question]
 
         try:
-            # 2. SOURCE EXTRACTION: Fetch and Index the master article
-            logger.info(f"Targeting Topic: {target_topic}")
-            article = self.wiki.get_article(target_topic)
-            title = article["title"]
-            
-            # Ensure the source article is 100% in our vector brain
-            if not self.chroma.exists(title):
-                self.chroma.add_article(title, article["content"])
-                self.cache.add(title, article["url"], 0)
+            # 2. MULTI-SOURCE EXTRACTION
+            all_intro_chunks = []
+            all_retrieved_chunks = []
+            final_title = ""
+            final_url = ""
+            final_images = []
 
-            # 3. DEEP RETRIEVAL: Pull specific facts from that locked article
-            query_embedding = self.embedder.embed_query(question)
-            # Use extra deep vision (top_k=25) for the locked topic
-            results = self.chroma.search(query_embedding, top_k=25)
+            for topic in target_topics:
+                try:
+                    article = self.wiki.get_article(topic)
+                    title = article["title"]
+                    if not final_title: 
+                        final_title = title
+                        final_url = article["url"]
+                        final_images = article["images"]
+                    
+                    if not self.chroma.exists(title):
+                        self.chroma.add_article(title, article["content"])
+                        self.cache.add(title, article["url"], 0)
+
+                    # Retrieval for this specific topic
+                    query_embedding = self.embedder.embed_query(f"{question} ({topic})")
+                    results = self.chroma.search(query_embedding, top_k=15)
+                    
+                    # Extract chunks
+                    id_to_chunk = {id: d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0])}
+                    sorted_all_ids = sorted(id_to_chunk.keys(), key=lambda x: int(x.split('_')[-1]) if '_' in x else 0)
+                    
+                    # Intro chunks (first 4)
+                    topic_intros = [id_to_chunk[id] for id in sorted_all_ids if int(id.split('_')[-1]) < 4]
+                    topic_retrieved = results["documents"][0]
+                    
+                    all_intro_chunks.extend(topic_intros)
+                    all_retrieved_chunks.extend(topic_retrieved)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch topic '{topic}': {e}")
+
+            # 3. CONTEXT INTEGRATION: Combine knowledge from all sources
+            context_list = list(dict.fromkeys(all_intro_chunks + all_retrieved_chunks))
+            context = "\n\n".join(context_list)
             
-            # Extract and Order: Summary first, then relevant snippets
-            id_to_chunk = {id: d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0])}
-            sorted_all_ids = sorted(id_to_chunk.keys(), key=lambda x: int(x.split('_')[-1]) if '_' in x else 0)
-            
-            # Mandatory Lead Section (first 4 chunks)
-            intro_chunks = [id_to_chunk[id] for id in sorted_all_ids if int(id.split('_')[-1]) < 4]
-            best_retrieved = results["documents"][0]
-            
-            # Combine without duplicates, keeping order
-            context = "\n\n".join(intro_chunks + [c for c in best_retrieved if c not in intro_chunks])
-            
-            # 4. FINAL ANSWER: Generate using ONLY the locked article's context
+            # 4. FINAL GROUNDED ANSWER
             answer = self.llm.generate(question=question, context=context)
 
             return {
                 "answer": answer,
-                "article": title,
-                "wikipedia_url": article["url"],
-                "sources": [],
-                "images": article["images"],
-                "matched_query": target_topic,
+                "article": final_title,
+                "wikipedia_url": final_url,
+                "sources": target_topics,
+                "images": final_images,
+                "matched_query": subjects_raw,
                 "cache_hit": True,
                 "response_time": round(time.time() - start, 2),
                 "model": "Groq Llama-3",
-                "spelling_corrected": article.get("spelling_corrected", False)
+                "spelling_corrected": False
             }
         except Exception as e:
-            logger.error(f"Topic Error: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Multi-Topic Error: {e}")
             return {
-                "answer": "I hit a snag while researching that topic. Could you be more specific about the subject?",
-                "article": "Research Error",
+                "answer": "I hit a snag while researching. Please try a different question.",
+                "article": "Error",
                 "wikipedia_url": "",
                 "sources": [],
                 "images": [],
-                "matched_query": target_topic,
+                "matched_query": subjects_raw,
                 "cache_hit": False,
                 "response_time": 0,
                 "model": "error",
