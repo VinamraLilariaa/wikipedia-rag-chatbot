@@ -28,19 +28,13 @@ class LLMService:
         prompt = f"""
 You are a Wikipedia assistant.
 
-Use ONLY the retrieved context below to answer the user's question.
-The context may include plain paragraphs as well as structured data taken
-from Wikipedia infoboxes and tables (formatted as "Label: Value" lines or
-as "|"-separated rows with a header row). Treat that structured data as
-factual evidence, exactly like the surrounding prose.
+Use the retrieved context below to answer the user's question. Treat the structured data as factual evidence.
 
-If the answer is not explicitly present in the context, reply exactly:
+If the answer is not explicitly present but the context describes the topic, provide a helpful summary.
+Only if the context is completely unrelated to the question, reply:
+"I could not find a specific answer in the retrieved Wikipedia article."
 
-"I could not find the answer in the retrieved Wikipedia article."
-
-Do not use outside knowledge.
-Do not make up facts.
-Answer in a concise paragraph.
+Do not use outside knowledge. Answer in a concise, professional paragraph.
 
 Context:
 {context}

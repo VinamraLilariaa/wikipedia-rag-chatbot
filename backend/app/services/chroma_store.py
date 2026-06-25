@@ -19,41 +19,60 @@ class ChromaStore:
 
     def add_article(self, title: str, content: str):
         """
-        Chunk content and add to ChromaDB. 
-        Improved for data-heavy statistical tables.
+        Chunk content and add to ChromaDB with ultra-robust splitting.
         """
-        # Split by paragraph and double-newlines (tables are usually separated this way)
-        raw_chunks = [p.strip() for p in content.split("\n\n")]
+        if not content:
+            logger.warning(f"Attempted to add empty content for '{title}'")
+            return
+
+        # Split by various possible separators to ensure we don't miss anything
+        import re
+        # Split by double newlines OR headers
+        raw_chunks = re.split(r'\n\n|(?=##)', content)
         
-        # Lower threshold for data-heavy lines (like stats)
-        paragraphs = [p for p in raw_chunks if len(p) > 20]
+        # Cleanup and filter
+        paragraphs = []
+        for p in raw_chunks:
+            p = p.strip()
+            if not p: continue
+            # If a chunk is way too long, split it further by single newlines
+            if len(p) > 2000:
+                sub_chunks = [sc.strip() for sc in p.split('\n') if len(sc.strip()) > 30]
+                paragraphs.extend(sub_chunks)
+            elif len(p) > 10: # Very low threshold to capture all data
+                paragraphs.append(p)
         
-        if not paragraphs: return
+        if not paragraphs:
+            return
 
         ids = [f"{title}_{i}" for i in range(len(paragraphs))]
         metadatas = [{"title": title} for _ in range(len(paragraphs))]
         
-        self.collection.add(
+        # Upsert to avoid duplications while ensuring fresh data
+        self.collection.upsert(
             documents=paragraphs,
             ids=ids,
             metadatas=metadatas
         )
-        logger.info(f"Added {len(paragraphs)} paragraphs from '{title}' to ChromaDB.")
+        logger.info(f"Indexed {len(paragraphs)} chunks for '{title}'")
 
-    def search(self, query_embedding, top_k: int = 5):
+    def search(self, query_embedding, top_k: int = 15):
         """
-        Search for most similar paragraphs.
+        Search for most similar chunks.
         """
-        return self.collection.query(
+        results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k
         )
+        # Ensure we always return something shaped correctly even if no results
+        if not results or not results["documents"]:
+            return {"documents": [[]], "ids": [[]]}
+        return results
 
-    def clear(self):
-        """
-        Reset collection.
-        """
-        self.client.delete_collection(COLLECTION_NAME)
-        self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME
+    def exists(self, title: str) -> bool:
+        """Check if an article is already indexed in Chroma"""
+        results = self.collection.get(
+            where={"title": title},
+            limit=1
         )
+        return len(results.get("ids", [])) > 0

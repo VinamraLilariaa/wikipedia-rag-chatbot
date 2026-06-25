@@ -20,7 +20,8 @@ class RAGService:
 
     def _index_article(self, query: str):
         article = self.wiki.get_article(query)
-        if self.cache.exists(article["title"]):
+        # Deep check: see if the data is actually in the vector DB
+        if self.chroma.exists(article["title"]):
             return article, True
         
         self.chroma.add_article(article["title"], article["content"])
