@@ -1,4 +1,5 @@
 import re
+import time
 from urllib.parse import quote
 
 import requests
@@ -69,6 +70,34 @@ class WikipediaService:
         # no idea who "Virat Kohli" is.
         self._spell = SpellChecker()
 
+        # In-memory session cache for query -> title resolution.
+        # This prevents redundant search API calls within the same server run.
+        self._query_cache = {}
+
+    def _request_with_retry(self, method, url, max_retries=3, **kwargs):
+        """
+        Helper to perform HTTP requests with exponential backoff on 429 errors.
+        """
+        for i in range(max_retries):
+            try:
+                response = self.session.request(method, url, **kwargs)
+                
+                if response.status_code == 429:
+                    wait_time = (2 ** i) + 1  # 2, 3, 5 seconds...
+                    logger.warning(f"Wikipedia API returned 429. Retrying in {wait_time}s... (Attempt {i+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                
+                response.raise_for_status()
+                return response
+            except requests.exceptions.RequestException as e:
+                if i == max_retries - 1:
+                    logger.error(f"Failed to fetch from Wikipedia after {max_retries} attempts: {e}")
+                    raise
+                wait_time = (2 ** i) + 0.5
+                time.sleep(wait_time)
+        return None
+
     # -------------------------------------------------
     # Spelling correction
     # -------------------------------------------------
@@ -112,65 +141,69 @@ class WikipediaService:
     # Search
     # -------------------------------------------------
 
-    def _wiki_search(self, query: str, limit: int = 5) -> dict:
+    def _wiki_search(self, query: str):
+        """
+        Uses Wikipedia's CirrusSearch to find the most relevant article.
+        """
         params = {
             "action": "query",
             "list": "search",
             "srsearch": query,
             "format": "json",
-            "srlimit": limit,
+            "srlimit": 5,
             "srinfo": "suggestion",
             "srprop": "",
         }
 
-        response = self.session.get(WIKI_API, params=params, timeout=10)
-        response.raise_for_status()
+        response = self._request_with_retry("GET", WIKI_API, params=params, timeout=10)
+        data = response.json()
 
-        return response.json().get("query", {})
+        search_results = data.get("query", {}).get("search", [])
+        suggestion = data.get("query", {}).get("searchinfo", {}).get("suggestion")
 
-    def search_article(self, query: str) -> dict:
-        pre_corrected = self._correct_common_words(query)
+        results = []
+        for res in search_results:
+            results.append({"title": res["title"]})
 
-        data = self._wiki_search(pre_corrected)
+        return results, suggestion
+    def search_article(self, query: str):
+        # 1. Check local cache first
+        cache_key = query.lower().strip()
+        if cache_key in self._query_cache:
+            logger.info(f"Query cache hit: '{query}' -> '{self._query_cache[cache_key]['title']}'")
+            return self._query_cache[cache_key]
 
-        results = data.get("search", [])
-        suggestion = data.get("searchinfo", {}).get("suggestion")
+        # 2. Correct common english words
+        corrected = self._correct_common_words(query)
 
-        matched_query = pre_corrected
-
-        # Wikipedia's CirrusSearch is confident enough in its own spelling
-        # suggestion that it's almost always worth preferring over the raw
-        # query - this is the main fix for things like "Viart KOhli".
-        if suggestion:
-            suggested_data = self._wiki_search(suggestion)
-            suggested_results = suggested_data.get("search", [])
-
-            if suggested_results:
-                results = suggested_results
-                matched_query = suggestion
+        # 3. Ask Wikipedia
+        results, suggestion = self._wiki_search(corrected)
 
         if not results:
-            raise ValueError(f"No Wikipedia article found for '{query}'.")
+            # If no results, try the "did you mean" suggestion from Wiki if it exists
+            if suggestion:
+                logger.info(f"Primary search failed, trying Wiki suggestion: '{suggestion}'")
+                results, _ = self._wiki_search(suggestion)
 
-        title = None
+            if not results:
+                raise ValueError(f"No Wikipedia article found for '{query}'.")
 
-        for result in results:
-            candidate = result["title"]
+        title = results[0]["title"]
 
-            if "(disambiguation)" not in candidate.lower():
-                title = candidate
-                break
+        similarity = fuzz.token_sort_ratio(
+            query.lower(),
+            title.lower(),
+        )
 
-        if title is None:
-            title = results[0]["title"]
-
-        similarity = fuzz.token_sort_ratio(query.lower(), title.lower())
-
-        return {
+        result = {
             "title": title,
-            "matched_query": matched_query,
+            "matched_query": title,
             "spelling_corrected": similarity < 92,
         }
+
+        # Cache the result
+        self._query_cache[cache_key] = result
+        return result
 
     # -------------------------------------------------
     # Article fetching
@@ -185,7 +218,7 @@ class WikipediaService:
             "redirects": 1,
         }
 
-        response = self.session.get(WIKI_API, params=params, timeout=15)
+        response = self._request_with_retry("GET", WIKI_API, params=params, timeout=15)
         response.raise_for_status()
 
         data = response.json()

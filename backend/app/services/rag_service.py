@@ -149,7 +149,22 @@ class RAGService:
 
         start = time.time()
 
-        article, cache_hit = self._index_article(question)
+        try:
+            article, cache_hit = self._index_article(question)
+        except Exception as e:
+            if "429" in str(e):
+                logger.error(f"Rate limit exceeded while processing '{question}': {e}")
+                return {
+                    "answer": "I'm sorry, I've hit Wikipedia's rate limit. Please try again in a few minutes.",
+                    "article": "Rate Limit Exceeded",
+                    "wikipedia_url": "https://en.wikipedia.org",
+                    "sources": [],
+                    "images": [],
+                    "cache_hit": False,
+                    "response_time": 0,
+                    "error": "429 Too Many Requests"
+                }
+            raise e
 
         logger.info("Embedding user query...")
 
