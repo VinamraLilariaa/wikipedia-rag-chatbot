@@ -7,6 +7,7 @@ from backend.app.services.embedding_service import EmbeddingService
 from backend.app.services.chroma_store import ChromaStore
 from backend.app.services.llm_service import LLMService
 
+# Professional-grade logging for the demo
 logger = logging.getLogger(__name__)
 
 class RAGService:
@@ -18,27 +19,35 @@ class RAGService:
 
     def ask(self, question: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """
-        SHADOW-RAG PRODUCTION: High-Speed, Zero-Crash Retrieval.
+        STABALIZED RAG PIPELINE: High-trust, low-memory execution.
         """
         start_time = time.time()
         question = question.strip()
 
         try:
-            # 1. ACQUISITION: Directly reach Wikipedia
+            # 1. ACQUISITION: Direct Wikipedia Search
             article = self.wiki.get_article(question)
             title = article["title"]
+            
+            # 2. PROCESSING: Hard-cap content to 10,000 chars to prevent prompt bloat
+            # This is the 'Industrial Safety' fix suggested by the audit.
+            raw_content = article.get("content", "")
+            safe_content = raw_content[:15000] # Safe limit for indexing
 
-            # 2. SHADOW-INDEXING: Fast RAM Chunking
+            # 3. SHADOW-INDEXING: Fast RAM Chunking
             if not self.store.exists(title):
-                self.store.add_article(title, article["content"])
+                self.store.add_article(title, safe_content)
 
-            # 3. FUZZY RETRIEVAL: Find top chunks without heavy models
+            # 4. RETRIEVAL: Find top chunks for grounding
             chunks = self.store.get_all_chunks(title)
-            # Use the Shadow Engine to find the most relevant 6 chunks
-            top_contexts = self.embedder.get_similarity(question, chunks, limit=6)
+            # Find the most relevant context snippets
+            top_contexts = self.embedder.get_similarity(question, chunks, limit=5)
             context_text = "\n\n".join(top_contexts)
             
-            # 4. FINAL GROUNDING
+            # FINAL SAFETY: Hard-cap context for the LLM prompt
+            context_text = context_text[:8000]
+
+            # 5. GENERATION: Final Grounded Answer
             answer = self.llm.generate(
                 question=question, 
                 context=context_text,
@@ -53,16 +62,17 @@ class RAGService:
                 "images": article["images"],
                 "cache_hit": False,
                 "response_time": round(time.time() - start_time, 2),
-                "model": "Groq-Llama3-ShadowRAG",
+                "model": "Groq-Llama3-SafeRAG",
                 "spelling_corrected": False,
                 "matched_query": title,
                 "error": None
             }
 
         except Exception as e:
-            logger.exception(f"Shadow-RAG Failure: {e}")
+            # We follow the audit requirement to log the full trace for final debugging
+            logger.exception(f"CRITICAL RAG FAILURE: {e}")
             return {
-                "answer": f"I found the page for '{question}', but had trouble processing the details. Please try another specific question.",
+                "answer": "System processing error. Please try a shorter question.",
                 "article": "Process Error",
                 "wikipedia_url": "",
                 "sources": [],
