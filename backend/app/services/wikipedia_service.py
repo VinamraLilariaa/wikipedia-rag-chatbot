@@ -1,49 +1,42 @@
-import requests
-import re
+import wikipedia
 import logging
-from urllib.parse import quote
+from backend.app.utils.logger import logger
 
-logger = logging.getLogger(__name__)
+# Configure the library for speed and compliance
+wikipedia.set_rate_limiting(False)
+wikipedia.set_lang("en")
 
 class WikipediaService:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "WikiIntel/1.0 (Research Project; Contact: dev@example.com)"
-        })
+        # We identify as a research project to ensure Wikipedia's servers prioritize us
+        wikipedia.set_user_agent("WikiIntelBot/1.0 (Contact: researcher@example.com; Research Project)")
 
     def get_article(self, query: str) -> dict:
         """
-        Ultra-Stable REST Retrieval.
+        OFFICIAL LIBRARY ACCESS: The most stable and robust method for 
+        retrieving Wikipedia data on cloud servers.
         """
         try:
-            # 1. Direct Summary Hit
-            search_title = query.strip().replace(' ', '_')
-            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(search_title)}"
-            resp = self.session.get(url, timeout=10)
+            # 1. Search and Auto-Suggest (Handles misspellings and redirects)
+            search_title = wikipedia.suggest(query) or query
             
-            if resp.status_code != 200:
-                # Fallback to search
-                search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(query)}&format=json"
-                search_data = self.session.get(search_url).json()
-                results = search_data.get("query", {}).get("search", [])
-                if not results: raise ValueError(f"No results for {query}")
-                search_title = results[0]["title"].replace(' ', '_')
-                url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(search_title)}"
-                resp = self.session.get(url, timeout=10)
-            
-            data = resp.json()
-            title = data.get("title", query)
-            
-            # 2. Extract and Clean Text
-            extract = data.get("extract", "")
-            
+            # 2. Page Acquisition (Handles disambiguation and missing pages)
+            try:
+                page = wikipedia.page(search_title, auto_suggest=True)
+            except wikipedia.DisambiguationError as e:
+                # If there are multiple options, pick the first one
+                page = wikipedia.page(e.options[0])
+            except wikipedia.PageError:
+                # Try the raw query if suggestion failed
+                page = wikipedia.page(query)
+
+            # 3. Data Formatting
             return {
-                "title": title,
-                "url": f"https://en.wikipedia.org/wiki/{quote(search_title)}",
-                "content": extract,
-                "images": [{"url": data["thumbnail"]["url"], "caption": title}] if "thumbnail" in data else []
+                "title": page.title,
+                "url": page.url,
+                "content": page.summary + "\n\n" + page.content[:50000],
+                "images": [{"url": img, "caption": page.title} for img in page.images[:6] if "upload" in img and not any(x in img.lower() for x in ('svg', 'icon', 'stub', 'edit', 'magnify'))]
             }
         except Exception as e:
-            logger.error(f"Wiki Error: {e}")
-            raise
+            logger.error(f"Wikipedia Library Failure: {e}")
+            raise ValueError(f"Could not retrieve Wikipedia content for '{query}'.")
