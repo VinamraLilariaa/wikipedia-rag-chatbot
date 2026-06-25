@@ -60,10 +60,10 @@ class WikipediaService:
     def __init__(self):
         self.session = requests.Session()
 
-        # Standard Wikipedia API requires a descriptive User-Agent 
-        # (Using a format they recommend for bots/apps)
+        # Production User-Agent: Specific, descriptive, and follows Wiki's "best practices"
         self.session.headers.update({
-            "User-Agent": "WikipediaIntelligenceBot/1.0 (https://huggingface.co/vinamra26/wikipedia-rag-chatbot; contact@example.com) library-based RAG"
+            "User-Agent": "WikipediaIntelligence/1.0 (https://github.com/vinamra26/wikipedia-rag-chatbot; production-rag-bot) requests-python",
+            "Accept-Encoding": "gzip", 
         })
 
         # Used only for light, general-purpose word corrections (e.g. common
@@ -80,27 +80,19 @@ class WikipediaService:
         """
         Helper to perform HTTP requests with exponential backoff on 429 errors.
         """
-        for i in range(max_retries):
-            try:
-                response = self.session.request(method, url, **kwargs)
-                
-                if response.status_code == 429:
-                    wait_time = (2 ** i) + 1  # 2, 3, 5 seconds...
-                    logger.warning(f"Wikipedia API returned 429. Retrying in {wait_time}s... (Attempt {i+1}/{max_retries})")
-                    time.sleep(wait_time)
-                    continue
-                
                 response.raise_for_status()
                 return response
             except requests.exceptions.RequestException as e:
+                # If we get a 403 or 429, we wait much longer
+                wait_time = (5 ** i) + 2  # 7s, 27s... much more aggressive backoff
                 if i == max_retries - 1:
                     logger.error(f"Failed to fetch from Wikipedia after {max_retries} attempts: {e}")
                     raise
-                wait_time = (2 ** i) + 0.5
+                
+                logger.warning(f"Connection issue or rate limit. Retrying in {wait_time}s...")
                 time.sleep(wait_time)
         
-        # If we reach here, it means we exhausted retries (likely hitting 429s)
-        raise Exception("Wikipedia API is currently too busy (All retries failed with rate limits). Please try again in a few minutes.")
+        raise Exception("Wikipedia is temporarily unavailable. Please try again in 30 seconds.")
 
     # -------------------------------------------------
     # Spelling correction

@@ -58,9 +58,8 @@ def ask(request: AskRequest):
         logger.exception("Error while processing /ask")
         traceback.print_exc()
 
-        # Reveal the actual error message temporarily to debug the server environment
-        error_msg = str(e) or "An unknown error occurred."
+        # Production error message: Clean, helpful, and non-technical
         raise HTTPException(
             status_code=500,
-            detail=f"Error: {error_msg}. Check your API keys and server logs.",
+            detail="The knowledge service is temporarily overwhelmed. Please try again in a few moments.",
         )
