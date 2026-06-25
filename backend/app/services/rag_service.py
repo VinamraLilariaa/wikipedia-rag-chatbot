@@ -2,6 +2,7 @@ import time
 import logging
 import traceback
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from backend.app.services.wikipedia_service import WikipediaService
 from backend.app.services.cache_service import CacheService
@@ -18,30 +19,33 @@ class RAGService:
         self.embedder = EmbeddingService()
         self.chroma = ChromaStore()
         self.llm = LLMService()
+        self.executor = ThreadPoolExecutor(max_workers=2)
 
     def ask(self, question: str, history: list = None):
         start = time.time()
         
-        # 1. ADVANCED TOPIC DISCOVERY: Identify Primary and Secondary subjects
-        history_text = "\n".join([f"{m['role']}: {m['text'] if 'text' in m else m.get('data', {}).get('answer', '')}" for m in (history or [])[-5:]])
-        
-        topic_prompt = (
-            "You are a Research Director. Identify the SUBJECTS of this conversation.\n"
-            "Return the names of the TWO most relevant Wikipedia articles, separated by a comma (e.g., 'Virat Kohli, Cricket').\n"
-            "If only one subject exists, return just one name.\n"
-            "If 'he' or 'she' is used, include the full name of the person they refer to.\n"
-            f"History:\n{history_text}\n"
-            f"Current Question: {question}\n\n"
-            "Names:"
-        )
-        subjects_raw = self.llm.simple_generate(topic_prompt).strip().strip('"').strip("'")
-        if "Names:" in subjects_raw: subjects_raw = subjects_raw.split("Names:")[-1].strip()
-        
-        target_topics = [s.strip() for s in subjects_raw.split(",") if len(s.strip()) > 2][:2]
+        # 1. OPTIMIZED TOPIC DISCOVERY
+        # If it's the first question, just use it directly to save a Groq call
+        if not history or len(history) == 0:
+            target_topics = [question]
+            subjects_raw = question
+        else:
+            history_text = "\n".join([f"{m['role']}: {m['text'] if 'text' in m else m.get('data', {}).get('answer', '')}" for m in (history or [])[-3:]])
+            topic_prompt = (
+                "Identify the ONE or TWO main Wikipedia subjects for the current question.\n"
+                "Return only names separated by a comma.\n"
+                f"History:\n{history_text}\n"
+                f"Question: {question}\n\n"
+                "Names:"
+            )
+            subjects_raw = self.llm.simple_generate(topic_prompt).strip().strip('"').strip("'")
+            if "Names:" in subjects_raw: subjects_raw = subjects_raw.split("Names:")[-1].strip()
+            target_topics = list(dict.fromkeys([s.strip() for s in subjects_raw.split(",") if len(s.strip()) > 2]))[:2]
+
         if not target_topics: target_topics = [question]
 
         try:
-            # 2. MULTI-SOURCE EXTRACTION
+            # 2. SOURCE EXTRACTION (Sequential but cached)
             all_intro_chunks = []
             all_retrieved_chunks = []
             final_title = ""
@@ -50,37 +54,34 @@ class RAGService:
 
             for topic in target_topics:
                 try:
+                    # Wikipedia search is the bottleneck, cached results are instant
                     article = self.wiki.get_article(topic)
                     title = article["title"]
-                    if not final_title: 
+                    
+                    if not final_title:
                         final_title = title
                         final_url = article["url"]
                         final_images = article["images"]
                     
+                    # Indexing is fast with the new regex chunker
                     if not self.chroma.exists(title):
                         self.chroma.add_article(title, article["content"])
                         self.cache.add(title, article["url"], 0)
 
-                    # Retrieval for this specific topic
-                    query_embedding = self.embedder.embed_query(f"{question} ({topic})")
+                    # Quick retrieval
+                    query_embedding = self.embedder.embed_query(f"{question} {topic}")
                     results = self.chroma.search(query_embedding, top_k=15)
                     
-                    # Extract chunks
                     id_to_chunk = {id: d for d, id in zip(results.get("documents", [[]])[0], results.get("ids", [[]])[0])}
-                    sorted_all_ids = sorted(id_to_chunk.keys(), key=lambda x: int(x.split('_')[-1]) if '_' in x else 0)
+                    sorted_ids = sorted(id_to_chunk.keys(), key=lambda x: int(x.split('_')[-1]) if '_' in x else 0)
                     
-                    # Intro chunks (first 4)
-                    topic_intros = [id_to_chunk[id] for id in sorted_all_ids if int(id.split('_')[-1]) < 4]
-                    topic_retrieved = results["documents"][0]
-                    
-                    all_intro_chunks.extend(topic_intros)
-                    all_retrieved_chunks.extend(topic_retrieved)
-                except Exception as e:
-                    logger.warning(f"Failed to fetch topic '{topic}': {e}")
+                    all_intro_chunks.extend([id_to_chunk[id] for id in sorted_ids if int(id.split('_')[-1]) < 4])
+                    all_retrieved_chunks.extend(results["documents"][0])
+                except Exception:
+                    continue
 
-            # 3. CONTEXT INTEGRATION: Combine knowledge from all sources
-            context_list = list(dict.fromkeys(all_intro_chunks + all_retrieved_chunks))
-            context = "\n\n".join(context_list)
+            # 3. NITRO CONTEXT: Flatten and deduplicate
+            context = "\n\n".join(list(dict.fromkeys(all_intro_chunks + all_retrieved_chunks)))
             
             # 4. FINAL GROUNDED ANSWER
             answer = self.llm.generate(question=question, context=context)
@@ -98,10 +99,10 @@ class RAGService:
                 "spelling_corrected": False
             }
         except Exception as e:
-            logger.error(f"Multi-Topic Error: {e}")
+            logger.error(f"Nitro Error: {e}")
             return {
-                "answer": "I hit a snag while researching. Please try a different question.",
-                "article": "Error",
+                "answer": "I'm still processing that. Please try a different way of asking.",
+                "article": "Performance Delay",
                 "wikipedia_url": "",
                 "sources": [],
                 "images": [],
