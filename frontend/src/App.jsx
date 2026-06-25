@@ -1,432 +1,170 @@
-import { useEffect, useRef, useState } from "react";
-import axios from "axios";
-import "./App.css";
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import './App.css';
+
+const API_URL = 'http://localhost:8000';
 
 const SUGGESTIONS = [
-  "Who is Virat Kohli?",
-  "Tell me about the Eiffel Tower",
-  "What is the history of Python?",
-  "Explain the theory of relativity",
+  "Virat Kohli Test Stats",
+  "History of Eiffel Tower",
+  "How black holes work",
+  "First moon landing"
 ];
 
-function Avatar({ role }) {
-  return (
-    <div className={`avatar avatar-${role}`}>
-      {role === "user" ? (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2.25c-4.142 0-7.5 2.515-7.5 5.625v.375a.75.75 0 0 0 .75.75h13.5a.75.75 0 0 0 .75-.75v-.375c0-3.11-3.358-5.625-7.5-5.625Z"
-            fill="currentColor"
-          />
-        </svg>
-      ) : (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 6.04A8.97 8.97 0 0 0 6 3.75c-1.05 0-2.06.18-3 .51v14.25A8.99 8.99 0 0 1 6 18c2.3 0 4.41.87 6 2.29m0-14.25a8.97 8.97 0 0 1 6-2.29c1.05 0 2.06.18 3 .51v14.25A8.99 8.99 0 0 0 18 18a8.97 8.97 0 0 0-6 2.29m0-14.25v14.25" />
-        </svg>
-      )}
-    </div>
-  );
-}
+const TRENDING = [
+  "Space Exploration",
+  "Artificial Intelligence",
+  "Ancient Rome",
+  "Renewable Energy"
+];
 
-function TypingIndicator() {
-  return (
-    <div className="message message-bot">
-      <Avatar role="bot" />
-
-      <div className="bubble bubble-bot typing-bubble">
-        <span className="dot"></span>
-        <span className="dot"></span>
-        <span className="dot"></span>
-      </div>
-    </div>
-  );
-}
-
-function SourcesPanel({ sources }) {
-  const [open, setOpen] = useState(false);
-
-  if (!sources || sources.length === 0) return null;
-
-  return (
-    <div className="sources-panel">
-      <button
-        className="link-button"
-        onClick={() => setOpen(!open)}
-      >
-        {open
-          ? "Hide retrieved context ▲"
-          : `Show retrieved context (${Math.min(
-              sources.length,
-              3
-            )}) ▼`}
-      </button>
-
-      {open && (
-        <div className="sources-list">
-          {sources.slice(0, 3).map((chunk, index) => (
-            <div className="chunk" key={index}>
-              <strong>Chunk {index + 1}</strong>
-              <p>{chunk}</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ImageGallery({ images }) {
-  if (!images || images.length === 0) return null;
-
-  return (
-    <div className="image-gallery">
-      {images.map((img, index) => (
-        <a
-          key={index}
-          href={img.url}
-          target="_blank"
-          rel="noreferrer"
-          className="image-tile"
-          title={img.caption || ""}
-        >
-          <img
-            src={img.url}
-            alt={img.caption || "Wikipedia image"}
-            loading="lazy"
-          />
-
-          {img.caption && (
-            <span className="image-caption">
-              {img.caption}
-            </span>
-          )}
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function BotMessage({ data }) {
-  return (
-    <div className="message message-bot">
-      <Avatar role="bot" />
-
-      <div className="bubble bubble-bot">
-        {data.error ? (
-          <p className="error-text">{data.error}</p>
-        ) : (
-          <>
-            {data.spellingCorrected &&
-              data.matchedQuery && (
-                <p className="spelling-note">
-                  Results for <strong>"{data.matchedQuery}"</strong>
-                </p>
-              )}
-
-            <p className="answer-text">
-              {data.answer}
-            </p>
-
-            <ImageGallery
-              images={data.images}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function UserMessage({ text }) {
-  return (
-    <div className="message message-user">
-      <div className="bubble bubble-user">
-        {text}
-      </div>
-
-      <Avatar role="user" />
-    </div>
-  );
-}
 function App() {
-  const [question, setQuestion] = useState("");
-  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([]);
-
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
-  const inputRef = useRef(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, loading]);
 
-  const sendQuestion = async (text) => {
-    const trimmed = (text ?? question).trim();
+  const handleSend = async (text) => {
+    const trimmed = text || input.trim();
+    if (!trimmed) return;
 
-    if (!trimmed || loading) return;
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        text: trimmed,
-      },
-    ]);
-
-    setQuestion("");
+    const userMsg = { role: 'user', text: trimmed };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
     setLoading(true);
 
     try {
-      const API_URL =
-        import.meta.env.VITE_API_URL || "/api";
-
-      const response = await axios.post(
-        `${API_URL}/ask`,
-        {
-          question: trimmed,
-          history: messages.slice(-5) // Send the last 5 messages for context
+      const response = await axios.post(`${API_URL}/ask`, {
+        question: trimmed,
+        history: messages.slice(-5)
+      });
+      
+      const botMsg = { 
+        role: 'bot', 
+        data: {
+          answer: response.data.answer,
+          article: response.data.article,
+          wikipedia_url: response.data.wikipedia_url,
+          images: response.data.images,
+          matchedQuery: response.data.matched_query,
+          spellingCorrected: response.data.spelling_corrected,
+          error: response.data.error
         }
-      );
-
-      const data = response.data;
-
-      // ---------- Convert backend image into gallery ----------
-      if (data.image && !data.images) {
-        data.images = [
-          {
-            url: data.image,
-            caption: data.article,
-          },
-        ];
-      }
-
-      // ---------- Ensure images array always exists ----------
-      if (!data.images) {
-        data.images = [];
-      }
-
-      // ---------- Ensure sources always exists ----------
-      if (!data.sources) {
-        data.sources = [];
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "bot",
-          data: {
-            ...data,
-
-            spellingCorrected:
-              data.spelling_corrected,
-
-            matchedQuery:
-              data.matched_query,
-          },
-        },
-      ]);
-    } catch (error) {
-      const detail =
-        error.response?.data?.detail ||
-        error.message ||
-        "Unable to reach the server.";
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "bot",
-          data: {
-            error: detail,
-          },
-        },
-      ]);
+      };
+      setMessages(prev => [...prev, botMsg]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'bot', data: { error: err.response?.data?.detail || "Service unavailable" } }]);
     } finally {
       setLoading(false);
-      inputRef.current?.focus();
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (
-      e.key === "Enter" &&
-      !e.shiftKey
-    ) {
-      e.preventDefault();
-      sendQuestion();
-    }
-  };
-
-  const clearChat = () => {
-    setMessages([]);
-  };
-    return (
+  return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="brand">
-          <div className="brand-icon">
-             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="accent-color">
-                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
-                <path d="M8 7h6" /><path d="M8 11h8" /><path d="M8 15h5" />
-             </svg>
+      <main className="main-content">
+        <header className="app-header">
+          <div className="brand">
+            <div className="brand-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div>
+              <h1>Wiki Intel</h1>
+            </div>
           </div>
+          <button className="clear-button" onClick={() => setMessages([])}>New Session</button>
+        </header>
 
-          <div>
-            <h1>Wikipedia Intelligence</h1>
-
-            <p>
-              AI-powered answers grounded in Wikipedia.
-            </p>
+        <div className="chat-area" ref={scrollRef}>
+          <div className="messages">
+            {messages.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">✨</div>
+                <h2>Search Wikipedia</h2>
+                <p>Ask anything about people, places, or science.</p>
+                <div className="suggestions">
+                  {SUGGESTIONS.map(s => (
+                    <button key={s} className="suggestion-chip" onClick={() => handleSend(s)}>{s}</button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((m, i) => (
+                <div key={i} className={`message message-${m.role}`}>
+                  <div className={`bubble bubble-${m.role}`}>
+                    {m.role === 'user' ? m.text : (
+                      <>
+                        <div className="secondary-note">
+                          <span>{m.data.article ? `Results for "${m.data.article}"` : "Intel"}</span>
+                          {m.data.wikipedia_url && (
+                            <a href={m.data.wikipedia_url} target="_blank" rel="noreferrer" className="wiki-link">
+                              Source ↗
+                            </a>
+                          )}
+                        </div>
+                        {m.data.error ? <p className="error-text">{m.data.error}</p> : (
+                          <>
+                            <p>{m.data.answer}</p>
+                            {m.data.images && m.data.images.length > 0 && (
+                              <div className="image-gallery">
+                                {m.data.images.map((img, idx) => (
+                                  <div key={idx} className="image-tile" title={img.caption}>
+                                    <img src={img.url} alt={img.caption || "Wiki"} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            {loading && <div className="message message-bot"><div className="bubble bubble-bot">Generating intelligence...</div></div>}
           </div>
         </div>
 
-        {messages.length > 0 && (
-          <button
-            className="clear-button"
-            onClick={clearChat}
-          >
-            New Session
-          </button>
-        )}
-      </header>
-
-      <main
-        className="chat-area"
-        ref={scrollRef}
-      >
-        {messages.length === 0 ? (
-          <div className="empty-state">
-
-            <div className="empty-icon">
-              ✨
-            </div>
-
-            <h2>
-              Discover the World
-            </h2>
-
-            <p>
-              Ask a complex question and I'll retrieve the relevant 
-              knowledge from Wikipedia to provide a precise answer.
-            </p>
-
-            <div className="suggestions">
-
-              {SUGGESTIONS.map((item) => (
-
-                <button
-                  key={item}
-                  className="suggestion-chip"
-                  onClick={() =>
-                    sendQuestion(item)
-                  }
-                >
-                  {item}
-                </button>
-
-              ))}
-
-            </div>
-
+        <div className="composer">
+          <div className="composer-box">
+            <textarea 
+              rows="1" 
+              placeholder="Ask a question..." 
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+            />
+            <button className="send-button" onClick={() => handleSend()}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
           </div>
-        ) : (
-
-          <div className="messages">
-
-            {messages.map((message, index) =>
-
-              message.role === "user" ? (
-
-                <UserMessage
-                  key={index}
-                  text={message.text}
-                />
-
-              ) : (
-
-                <BotMessage
-                  key={index}
-                  data={message.data}
-                />
-
-              )
-
-            )}
-
-            {loading && <TypingIndicator />}
-
-          </div>
-
-        )}
+          <p className="disclaimer">Verified by Wikipedia Content</p>
+        </div>
       </main>
 
-      <footer className="composer">
+      <aside className="sidebar">
+        <section className="sidebar-section">
+          <h3>Trending Topics</h3>
+          <div className="trending-list">
+            {TRENDING.map(t => (
+              <div key={t} className="trending-item" onClick={() => handleSend(t)}>{t}</div>
+            ))}
+          </div>
+        </section>
 
-        <div className="composer-box">
-
-          <textarea
-            ref={inputRef}
-            autoFocus
-            rows={1}
-            placeholder="Type your question..."
-            value={question}
-            onChange={(e) =>
-              setQuestion(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-
-          <button
-            className="send-button"
-            onClick={() => sendQuestion()}
-            disabled={
-              loading ||
-              !question.trim()
-            }
-            aria-label="Send"
-          >
-            {loading ? (
-
-              <span className="spinner"></span>
-
-            ) : (
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-
-            )}
-          </button>
-
-        </div>
-
-        <p className="disclaimer">
-          Precision AI — Verified by Wikipedia
-        </p>
-
-      </footer>
-
+        <section className="sidebar-section">
+          <div className="info-card">
+            <strong>Did you know?</strong>
+            <p>Wikipedia has over 60 million articles across 300+ languages. This assistant only searches the highest-rated English content.</p>
+          </div>
+        </section>
+      </aside>
     </div>
   );
 }

@@ -157,8 +157,11 @@ class RAGService:
             ])
             
             rewrite_prompt = (
-                "You are a search query generator. Based on the history, identify the subject and rewrite the latest question as a standalone search query.\n"
-                "IMPORTANT: Return ONLY the search query string. DO NOT include any explanations, labels, or introductory text.\n\n"
+                "You are an expert search query generator. Analyze the conversation history and rewrite the latest question as a standalone search query.\n"
+                "RULES:\n"
+                "1. If the question uses pronouns (he/she/it/they), replace them with the primary person or subject being discussed in the history.\n"
+                "2. If the user misspells a name, use the correct version (e.g., 'Dolan Trumpy' -> 'Donald Trump').\n"
+                "3. RETURN ONLY THE QUERY STRING. No chatter, no labels, no quotes.\n\n"
                 f"History:\n{history_text}\n\n"
                 f"Latest Question: {question}\n\n"
                 "Query:"
