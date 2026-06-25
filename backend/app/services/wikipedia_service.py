@@ -181,9 +181,11 @@ class WikipediaService:
 
         if not results:
             # If no results, try the "did you mean" suggestion from Wiki if it exists
+            # We strip any HTML tags from the suggestion (Wiki keeps them in search results)
             if suggestion:
-                logger.info(f"Primary search failed, trying Wiki suggestion: '{suggestion}'")
-                results, _ = self._wiki_search(suggestion)
+                clean_suggestion = re.sub(r'<[^>]*>', '', suggestion)
+                logger.info(f"Primary search failed, trying clean Wiki suggestion: '{clean_suggestion}'")
+                results, _ = self._wiki_search(clean_suggestion)
 
             if not results:
                 raise ValueError(f"No Wikipedia article found for '{query}'.")
@@ -325,61 +327,58 @@ class WikipediaService:
 
     def _table_to_text(self, table) -> str:
         """
-        Converts a Wikipedia <table> into plain text the LLM can reason
-        over: "Label: Value" lines for infoboxes, and pipe-separated rows
-        (with a header row) for regular data tables.
+        Converts a Wikipedia <table> into plain text.
+        Handles infoboxes as key-value pairs and data tables as pipe-separated rows.
         """
-
         classes = table.get("class", []) or []
-        is_infobox = "infobox" in classes
+        is_infobox = any(c in classes for c in ["infobox", "vcard", "biota"])
 
         rows = table.find_all("tr")
+        if not rows:
+            return ""
 
         if is_infobox:
             caption = table.find("caption")
             label = caption.get_text(" ", strip=True) if caption else "Quick Facts"
-
             lines = [f"## {label}"]
-
+            
             for row in rows:
                 header = row.find("th")
                 value = row.find("td")
-
                 if header and value:
                     h_text = header.get_text(" ", strip=True)
                     v_text = value.get_text(" ", strip=True)
-
-                    if h_text and v_text:
+                    if h_text and v_text and len(h_text) < 50:
                         lines.append(f"{h_text}: {v_text}")
-
             return "\n".join(lines) if len(lines) > 1 else ""
 
-        # Regular content/statistics table.
-        header_row = table.find("tr")
-        header_cells = (
-            [th.get_text(" ", strip=True) for th in header_row.find_all("th")]
-            if header_row
-            else []
-        )
-
-        data_rows = rows[1:] if header_cells else rows
-        data_rows = data_rows[:25]  # cap size so one huge table can't blow up context
-
+        # Regular statistics or content table
         lines = []
+        header_row = table.find("tr")
+        if not header_row:
+            return ""
+            
+        header_cells = [th.get_text(" ", strip=True) for th in header_row.find_all(["th", "td"])[:10]]
+        if any(header_cells):
+            lines.append(" | ".join(header_cells))
+            lines.append("-" * 20)
 
-        if header_cells:
-            lines.append(" | ".join(header_cells[:10]))
-
-        for row in data_rows:
-            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
-
+        data_rows = rows[1:] if len(lines) > 0 else rows
+        for row in data_rows[:30]: # Cap to 30 rows
+            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])[:10]]
             if cells and any(cells):
-                lines.append(" | ".join(cells[:10]))
+                lines.append(" | ".join(cells))
 
         if len(lines) < 2:
             return ""
+            
+        table_title = ""
+        prev_h = table.find_previous(["h2", "h3", "h4"])
+        if prev_h:
+            table_title = prev_h.get_text(" ", strip=True).split("[")[0].strip()
 
-        return "Table:\n" + "\n".join(lines)
+        header = f"Table: {table_title}\n" if table_title else "Data Table:\n"
+        return header + "\n".join(lines)
 
     # -------------------------------------------------
     # Image extraction
