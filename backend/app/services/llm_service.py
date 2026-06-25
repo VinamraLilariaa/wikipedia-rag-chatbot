@@ -26,17 +26,17 @@ class LLMService:
     ) -> str:
 
         prompt = f"""
-You are a Wikipedia assistant.
+You are a Professional Wikipedia Researcher. 
 
-Use the retrieved context below to answer the user's question. Treat the structured data as factual evidence.
+STRICT RULES for your answer:
+1. Use ONLY the provided Wikipedia context (Summary and Sections) to answer.
+2. If the answer is present, extract it precisely and answer thoroughly.
+3. If the answer is NOT present in the provided context, you MUST reply exactly with:
+   "I could not find a specific answer in the retrieved Wikipedia article."
+4. DO NOT use outside knowledge. DO NOT make up details.
+5. Keep your tone professional and objective.
 
-If the answer is not explicitly present but the context describes the topic, provide a helpful summary.
-Only if the context is completely unrelated to the question, reply:
-"I could not find a specific answer in the retrieved Wikipedia article."
-
-Do not use outside knowledge. Answer in a concise, professional paragraph.
-
-Context:
+Context from Wikipedia:
 {context}
 
 Question:
@@ -50,15 +50,15 @@ Answer:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful Wikipedia assistant."
+                    "content": "You are a professional research assistant grounded strictly in Wikipedia data."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.2,
-            max_tokens=512,
+            temperature=0.0, # Zero temperature for maximum factual reliability
+            max_tokens=600,
         )
 
         return response.choices[0].message.content.strip()
