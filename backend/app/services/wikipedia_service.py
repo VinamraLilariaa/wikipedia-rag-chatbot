@@ -1,93 +1,100 @@
-import time
-
 import wikipedia
+import wikipediaapi
+from rapidfuzz import fuzz
 
-from backend.app.services.search_service import SearchService
 from backend.app.utils.logger import logger
 
 
 class WikipediaService:
-    """
-    Responsible only for downloading Wikipedia articles.
-    Article selection is delegated to SearchService.
-    """
 
     def __init__(self):
 
         wikipedia.set_lang("en")
 
-        self.search_service = SearchService()
+        self.wiki = wikipediaapi.Wikipedia(
+            language="en",
+            user_agent="WikipediaRAGBot/1.0"
+        )
+
+        # cache for resolved titles
+        self.title_cache = {}
+
+    def search_article(self, query: str):
+
+        query = query.strip()
+
+        if query.lower() in self.title_cache:
+            logger.info(f"Cache hit: {query}")
+            return self.title_cache[query]
+
+        logger.info(f"Searching Wikipedia for: {query}")
+
+        # -------------------------
+        # Step 1 : Wikipedia Suggest
+        # -------------------------
+
+        try:
+            suggestion = wikipedia.suggest(query)
+
+            if suggestion:
+                logger.info(f"Suggestion -> {suggestion}")
+
+                self.title_cache[query.lower()] = suggestion
+                return suggestion
+
+        except Exception:
+            pass
+
+        # -------------------------
+        # Step 2 : Wikipedia Search
+        # -------------------------
+
+        try:
+            results = wikipedia.search(query, results=10)
+
+        except Exception:
+            results = []
+
+        if not results:
+            raise ValueError(f"No article found for '{query}'.")
+
+        # -------------------------
+        # Step 3 : RapidFuzz Ranking
+        # -------------------------
+
+        best_title = results[0]
+        best_score = -1
+
+        for title in results:
+
+            score = fuzz.token_sort_ratio(
+                query.lower(),
+                title.lower()
+            )
+
+            logger.info(f"{title} -> {score}")
+
+            if score > best_score:
+                best_score = score
+                best_title = title
+
+        logger.info(f"Chosen article: {best_title}")
+
+        self.title_cache[query.lower()] = best_title
+
+        return best_title
 
     def get_article(self, query: str):
 
-        retries = 3
+        title = self.search_article(query)
 
-        for attempt in range(retries):
+        page = self.wiki.page(title)
 
-            try:
+        if not page.exists():
+            raise ValueError(f"No Wikipedia page found for '{title}'.")
 
-                title = self.search_service.search(query)
-
-                logger.info(
-                    f"Downloading article: {title}"
-                )
-
-                page = wikipedia.page(
-                    title,
-                    auto_suggest=False,
-                )
-
-                logger.info(
-                    f"Downloaded: {page.title}"
-                )
-
-                return {
-
-                    "title": page.title,
-
-                    "url": page.url,
-
-                    "content": page.content,
-                }
-
-            except wikipedia.DisambiguationError as e:
-
-                logger.warning(
-                    f"Disambiguation encountered for '{query}'. "
-                    f"Trying '{e.options[0]}'."
-                )
-
-                page = wikipedia.page(
-                    e.options[0],
-                    auto_suggest=False,
-                )
-
-                return {
-
-                    "title": page.title,
-
-                    "url": page.url,
-
-                    "content": page.content,
-                }
-
-            except wikipedia.PageError:
-
-                raise ValueError(
-                    f"No Wikipedia page found for '{query}'."
-                )
-
-            except Exception as e:
-
-                logger.warning(
-                    f"Attempt {attempt + 1} failed: {e}"
-                )
-
-                if attempt == retries - 1:
-                    raise
-
-                time.sleep(2 ** attempt)
-
-        raise Exception(
-            "Unable to retrieve article after multiple retries."
-        )
+        return {
+            "title": page.title,
+            "url": page.fullurl,
+            "content": page.text,
+        }
