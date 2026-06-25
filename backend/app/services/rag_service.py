@@ -1,7 +1,10 @@
 import time
 import logging
-import re
+from typing import List, Dict, Any
+
 from backend.app.services.wikipedia_service import WikipediaService
+from backend.app.services.embedding_service import EmbeddingService
+from backend.app.services.chroma_store import ChromaStore
 from backend.app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -9,68 +12,77 @@ logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
         self.wiki = WikipediaService()
+        self.embedder = EmbeddingService()
+        self.chroma = ChromaStore()
         self.llm = LLMService()
+        self._cache = {}
 
-    def ask(self, question: str, history: list = None):
+    def ask(self, question: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """
-        LASER-PRECISION RAG SERVICE: 
-        Ensures perfect topic matching and 100% uptime.
+        MASTER PRODUCTION RAG: Simplified, Grounded, and Reliable.
+        Flow: Question -> Search -> Chunk -> Embed -> Retrieve -> Generate.
         """
-        start = time.time()
-        
-        # 1. Laser-Precision Topic Identification
-        target_topic = question.strip()
+        start_time = time.time()
+        question = question.strip()
+
         try:
-            history_text = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in (history or [])[-3:]])
-            topic_prompt = (
-                "You are a Search Engineer. Identify the SINGLE most relevant Wikipedia article title for the current question.\n"
-                "RULES:\n1. Return ONLY the title.\n2. NO sentences.\n3. NO introductory text.\n"
-                f"History:\n{history_text}\n"
-                f"Current Question: {question}\n\n"
-                "Article Title:"
+            # 1. ACQUISITION: Direct Wikipedia Search
+            # No LLM-preprocessing. We use Wikipedia's own powerful search engine.
+            article = self.wiki.get_article(question)
+            title = article["title"]
+
+            # 2. SEMANTIC INDEXING: Chunk and store in-memory (RAM-speed)
+            # We only index if it's a new article to keep performance high.
+            if not self.chroma.exists(title):
+                self.chroma.add_article(title, article["content"])
+
+            # 3. CONTEXTUAL RETRIEVAL: Find the most relevant segments
+            query_embedding = self.embedder.embed_query(question)
+            search_results = self.chroma.search(query_embedding, top_k=10)
+            
+            # Extract top segments for the LLM
+            contexts = search_results.get("documents", [[]])[0]
+            context_text = "\n\n".join(contexts)
+            
+            # 4. FINAL GROUNDING: LLM synthesizes the answer from the chunks
+            answer = self.llm.generate(
+                question=question, 
+                context=context_text,
+                history=history
             )
-            raw_topic = self.llm.simple_generate(topic_prompt).strip()
-            # Clean away common AI prefixes
-            clean_topic = re.sub(r'^(the|article|title|subject|is)\s*(is|:|-)*\s*', '', raw_topic, flags=re.IGNORECASE)
-            clean_topic = clean_topic.strip().strip('"').strip("'").split('\n')[0]
-            
-            if len(clean_topic) > 2:
-                target_topic = clean_topic
-        except:
-            pass
 
-        try:
-            # 2. Wikipedia Acquisition (Optimized REST API)
-            article = self.wiki.get_article(target_topic)
-            
-            # 3. Grounded Generation
-            answer = self.llm.generate(question=question, context=article["content"])
-
+            # 5. RESPONSE: Full schema compliance with confidence
             return {
                 "answer": answer,
-                "article": article["title"],
+                "article": title,
                 "wikipedia_url": article["url"],
-                "sources": [article["title"]],
+                "sources": [title],
                 "images": article["images"],
-                "cache_hit": False,
-                "response_time": round(time.time() - start, 2),
-                "model": "Groq-Llama-3",
+                "cache_hit": title in self._cache,
+                "response_time": round(time.time() - start_time, 2),
+                "model": "Groq-Llama3-Grounded",
                 "spelling_corrected": False,
-                "matched_query": target_topic,
+                "matched_query": title,
                 "error": None
             }
+
         except Exception as e:
-            logger.error(f"Global Pipeline Failure: {e}")
+            logger.exception(f"RAG Failure: {e}")
+            # Explicit error return for the UI
             return {
-                "answer": f"I couldn't find a dedicated Wikipedia page for '{target_topic}'. Please try asking about a specific person, place, or event.",
-                "article": "Topic Mismatch",
+                "answer": f"I had trouble finding or reading the Wikipedia page for '{question}'.",
+                "article": "Search Failed",
                 "wikipedia_url": "",
                 "sources": [],
                 "images": [],
                 "cache_hit": False,
-                "response_time": 0.0,
+                "response_time": 0,
                 "model": "error",
                 "spelling_corrected": False,
-                "matched_query": target_topic,
-                "error": f"Wikipedia article for '{target_topic}' not found."
+                "matched_query": question,
+                "error": str(e)
             }
+        finally:
+            # Simple in-session caching
+            if 'title' in locals():
+                self._cache[title] = True
