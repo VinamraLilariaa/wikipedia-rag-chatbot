@@ -42,6 +42,12 @@ class RAGService:
 
         title = article["title"]
 
+        if article.get("spelling_corrected"):
+            logger.info(
+                f"Spelling/typo corrected: '{question}' -> '{article.get('matched_query')}' "
+                f"(article: '{title}')"
+            )
+
         logger.info(f"Retrieved article: {title}")
 
         cache_hit = self.cache.exists(title)
@@ -79,6 +85,11 @@ class RAGService:
         logger.info(
             f"Generated {len(chunks)} chunks."
         )
+
+        if not chunks:
+            raise ValueError(
+                f"Found the Wikipedia article '{title}', but it has no readable content."
+            )
 
         logger.info("Generating embeddings...")
 
@@ -165,8 +176,9 @@ class RAGService:
 
         ):
 
-            raise Exception(
-                "No relevant documents found."
+            raise ValueError(
+                f"Found the Wikipedia article '{article['title']}', but couldn't "
+                "retrieve any relevant passages for that question."
             )
 
         retrieved_chunks = results["documents"][0]
@@ -211,9 +223,15 @@ class RAGService:
 
             "sources": retrieved_chunks,
 
+            "images": article.get("images", []),
+
             "cache_hit": cache_hit,
 
             "response_time": response_time,
 
             "model": "llama-3.3-70b-versatile",
+
+            "spelling_corrected": article.get("spelling_corrected", False),
+
+            "matched_query": article.get("matched_query"),
         }

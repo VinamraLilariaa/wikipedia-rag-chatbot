@@ -14,10 +14,12 @@ class TextCleaner:
         # Remove citation numbers like [1], [23]
         text = re.sub(r"\[\d+\]", "", text)
 
-        # Replace multiple newlines with a single newline
-        text = re.sub(r"\n+", "\n", text)
+        # Collapse 3+ newlines down to a single blank line, but keep
+        # paragraph/section breaks (double newlines) intact so chunking
+        # still respects the article's structure (headings, tables, etc).
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
-        # Replace multiple spaces with a single space
+        # Replace multiple spaces/tabs with a single space
         text = re.sub(r"[ \t]+", " ", text)
 
         return text.strip()

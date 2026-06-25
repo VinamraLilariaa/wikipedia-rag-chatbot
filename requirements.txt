@@ -21,9 +21,12 @@ requests==2.32.4
 httpx==0.28.1
 
 beautifulsoup4==4.13.4
+lxml==6.0.0
+pandas==2.3.1
 
 wikipedia==1.4.0
 
 pydantic==2.11.7
 
-rapidfuzz
+rapidfuzz==3.13.0
+pyspellchecker==0.8.3

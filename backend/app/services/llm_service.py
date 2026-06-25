@@ -29,6 +29,10 @@ class LLMService:
 You are a Wikipedia assistant.
 
 Use ONLY the retrieved context below to answer the user's question.
+The context may include plain paragraphs as well as structured data taken
+from Wikipedia infoboxes and tables (formatted as "Label: Value" lines or
+as "|"-separated rows with a header row). Treat that structured data as
+factual evidence, exactly like the surrounding prose.
 
 If the answer is not explicitly present in the context, reply exactly:
 

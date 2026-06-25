@@ -28,6 +28,14 @@ def ask(request: AskRequest):
 
     global rag
 
+    question = request.question.strip()
+
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty.",
+        )
+
     try:
 
         if rag is None:
@@ -35,7 +43,16 @@ def ask(request: AskRequest):
             rag = RAGService()
             print("RAG Service Created!")
 
-        return rag.ask(request.question)
+        return rag.ask(question)
+
+    except ValueError as e:
+        # Expected, user-facing failures: e.g. no matching Wikipedia article.
+        logger.warning(f"No result for question '{question}': {e}")
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+        )
 
     except Exception as e:
         logger.exception("Error while processing /ask")
@@ -43,5 +60,5 @@ def ask(request: AskRequest):
 
         raise HTTPException(
             status_code=500,
-            detail=str(e),
+            detail="Something went wrong while generating an answer. Please try again.",
         )

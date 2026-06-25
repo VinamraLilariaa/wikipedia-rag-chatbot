@@ -85,6 +85,15 @@ TOP_K = int(
 )
 
 # -------------------------
+# Wikipedia / Media Configuration
+# -------------------------
+
+# Max number of article images returned alongside an answer.
+MAX_IMAGES = int(
+    os.getenv("MAX_IMAGES", 4)
+)
+
+# -------------------------
 # Cache Configuration
 # -------------------------
 
