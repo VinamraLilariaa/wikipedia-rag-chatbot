@@ -80,6 +80,10 @@ class WikipediaService:
         """
         Helper to perform HTTP requests with exponential backoff on 429 errors.
         """
+        for i in range(max_retries):
+            try:
+                response = self.session.request(method, url, **kwargs)
+                
                 response.raise_for_status()
                 return response
             except requests.exceptions.RequestException as e:
