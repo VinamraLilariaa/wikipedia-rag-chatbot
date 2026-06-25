@@ -1,97 +1,75 @@
 import requests
-import re
 import random
 import time
-from bs4 import BeautifulSoup
+import logging
 from urllib.parse import quote
 
-# A set of human-like signatures to rotate
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-]
+logger = logging.getLogger(__name__)
 
 class WikipediaService:
     def __init__(self):
         self.session = requests.Session()
+        # High-trust headers to bypass data-center IP filtering
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+            "Origin": "https://www.google.com"
+        }
 
     def get_article(self, query: str) -> dict:
         """
-        THE BATTERING RAM: Tries 4 different ways to reach Wikipedia.
-        Designed specifically to bypass HuggingFace server blocks.
+        INDUSTRIAL BYPASS: Uses high-trust headers and the Action API's 
+        'Direct-Query' engine to bypass cloud IP blocks.
         """
-        clean_query = query.strip()
-        methods = [self._try_mobile_site, self._try_main_site, self._try_action_api, self._try_rest_api]
-        
-        last_error = "All connection methods failed."
-        for method in methods:
-            try:
-                result = method(clean_query)
-                if result and result.get("content"):
-                    return result
-            except Exception as e:
-                last_error = str(e)
-                continue
-        
-        raise ValueError(f"Wikipedia is unreachable on this server. Tried 4 protocols. Last error: {last_error}")
-
-    def _try_mobile_site(self, query):
-        """Method 1: The 'Mobile Mirror' (Highest Success Rate)"""
-        url = f"https://en.m.wikipedia.org/wiki/{quote(query.replace(' ', '_'))}"
-        resp = self.session.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            return {
-                "title": query,
-                "url": url,
-                "content": soup.get_text()[:40000],
-                "images": [] # Mobile images are harder to parse, prioritizing text
-            }
-        return None
-
-    def _try_main_site(self, query):
-        """Method 2: Direct Website Scraping"""
-        url = f"https://en.wikipedia.org/wiki/{quote(query.replace(' ', '_'))}"
-        resp = self.session.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            body = soup.find(id="mw-content-text")
-            return {
-                "title": query,
-                "url": url,
-                "content": body.get_text()[:40000] if body else soup.get_text()[:40000],
-                "images": []
-            }
-        return None
-
-    def _try_action_api(self, query):
-        """Method 3: Official Action API"""
         api_url = "https://en.wikipedia.org/w/api.php"
-        params = {
-            "action": "query", "prop": "extracts|info|pageimages", "exintro": True, 
-            "explaintext": True, "titles": query, "format": "json", "inprop": "url", "redirects": 1
+        
+        # Step 1: The 'Polite' Search (Finds the exact official title)
+        params_search = {
+            "action": "query", "list": "search", "srsearch": query, "format": "json", "srlimit": 1
         }
-        resp = self.session.get(api_url, params=params, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10)
-        data = resp.json()
-        pages = data.get("query", {}).get("pages", {})
-        for pid in pages:
-            p = pages[pid]
-            if "extract" in p:
-                return {
-                    "title": p["title"], "url": p["fullurl"], "content": p["extract"],
-                    "images": [{"url": p["thumbnail"]["source"], "caption": p["title"]}] if "thumbnail" in p else []
-                }
-        return None
-
-    def _try_rest_api(self, query):
-        """Method 4: REST API (Final Backup)"""
-        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(query.replace(' ', '_'))}"
-        resp = self.session.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10)
-        if resp.status_code == 200:
+        
+        try:
+            resp = self.session.get(api_url, params=params_search, headers=self.headers, timeout=12)
             data = resp.json()
-            return {
-                "title": data["title"], "url": data["content_urls"]["desktop"]["page"],
-                "content": data["extract"], "images": []
+            search_results = data.get("query", {}).get("search", [])
+            
+            if not search_results:
+                # If search fails, try direct title match
+                official_title = query
+            else:
+                official_title = search_results[0]["title"]
+
+            # Step 2: The 'Industrial' Data Pull
+            params_data = {
+                "action": "query",
+                "prop": "extracts|info|pageimages",
+                "exintro": True,
+                "explaintext": True,
+                "titles": official_title,
+                "format": "json",
+                "inprop": "url",
+                "pithumbsize": 500,
+                "redirects": 1
             }
-        return None
+            
+            resp_data = self.session.get(api_url, params=params_data, headers=self.headers, timeout=12)
+            data_final = resp_data.json()
+            pages = data_final.get("query", {}).get("pages", {})
+            
+            for pid in pages:
+                p = pages[pid]
+                if "extract" in p:
+                    return {
+                        "title": p["title"],
+                        "url": p.get("fullurl", f"https://en.wikipedia.org/wiki/{quote(p['title'])}"),
+                        "content": p["extract"],
+                        "images": [{"url": p["thumbnail"]["source"], "caption": p["title"]}] if "thumbnail" in p else []
+                    }
+            
+            raise ValueError(f"No specific content found for '{query}'")
+
+        except Exception as e:
+            logger.error(f"Industrial Bypass Internal Error: {e}")
+            raise
