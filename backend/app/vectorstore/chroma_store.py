@@ -11,12 +11,11 @@ class ChromaStore:
 
     def __init__(self):
 
-        self.client = chromadb.PersistentClient(
-            path=CHROMA_PATH,
-            settings=Settings(
-                anonymized_telemetry=False
-            ),
+        self.client = chromadb.Client(
+            Settings(
+            anonymized_telemetry=False
         )
+    )
 
         self.collection = self.client.get_or_create_collection(
             name="wikipedia_articles"

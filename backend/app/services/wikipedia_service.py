@@ -391,25 +391,39 @@ class WikipediaService:
 
         for img in soup.find_all("img"):
             src = img.get("src", "")
+            if not src:
+                src = img.get("data-src", "")
 
-            if not src or not src.startswith("//upload.wikimedia.org"):
+            if not src:
                 continue
 
-            if any(pattern in src.lower() for pattern in SKIP_IMAGE_PATTERNS):
+            # Handle protocol-relative URLs
+            if src.startswith("//"):
+                full_url = "https:" + src
+            elif src.startswith("http"):
+                full_url = src
+            else:
+                continue
+
+            # Only take official Wikipedia/Wikimedia uploads
+            if "upload.wikimedia.org" not in full_url:
+                continue
+
+            # Skip "chrome" / UI images
+            if any(pattern in full_url.lower() for pattern in SKIP_IMAGE_PATTERNS):
                 continue
 
             width = img.get("width")
-
             try:
                 if width and int(width) < 60:
                     continue
             except ValueError:
                 pass
 
-            full_url = "https:" + src
-
-            # Bump tiny inline thumbnails up to a more readable size.
-            full_url = re.sub(r"/\d+px-", "/360px-", full_url)
+            # Remove forced upscaling. Using the original size Wikipedia provides 
+            # ensures the URL is valid and the image actually exists.
+            # (Previously was attempting to swap for /400px- which can fail)
+            pass
 
             if full_url in seen:
                 continue
@@ -417,11 +431,11 @@ class WikipediaService:
             seen.add(full_url)
 
             caption = ""
-            figure = img.find_parent(["figure", "div"])
-
+            # Search for a caption in the surrounding figure/div
+            figure = img.find_parent(["figure", "div", "td"])
             if figure:
-                cap_tag = figure.find(class_="thumbcaption")
-
+                # Try common Wikipedia caption classes
+                cap_tag = figure.find(class_=["thumbcaption", "infobox-caption", "wp-caption-text"])
                 if cap_tag:
                     caption = cap_tag.get_text(" ", strip=True)
 
