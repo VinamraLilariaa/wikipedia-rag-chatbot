@@ -1,4 +1,4 @@
-import wikipedia
+import requests
 from rapidfuzz import fuzz
 
 from backend.app.utils.logger import logger
@@ -6,9 +6,15 @@ from backend.app.utils.logger import logger
 
 class WikipediaService:
 
+    SEARCH_URL = "https://en.wikipedia.org/w/api.php"
+
     def __init__(self):
 
-        wikipedia.set_lang("en")
+        self.session = requests.Session()
+
+        self.session.headers.update({
+            "User-Agent": "WikipediaRAGBot/1.0 (tanav-project)"
+        })
 
         self.title_cache = {}
 
@@ -19,25 +25,35 @@ class WikipediaService:
         if query.lower() in self.title_cache:
             return self.title_cache[query.lower()]
 
-        try:
-            suggestion = wikipedia.suggest(query)
+        logger.info(f"Searching Wikipedia for: {query}")
 
-            if suggestion:
-                self.title_cache[query.lower()] = suggestion
-                return suggestion
+        response = self.session.get(
+            self.SEARCH_URL,
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srlimit": 10,
+                "format": "json",
+            },
+            timeout=10,
+        )
 
-        except Exception:
-            pass
+        response.raise_for_status()
 
-        results = wikipedia.search(query, results=10)
+        data = response.json()
+
+        results = data.get("query", {}).get("search", [])
 
         if not results:
             raise ValueError(f"No article found for '{query}'.")
 
-        best_title = results[0]
+        best_title = None
         best_score = -1
 
-        for title in results:
+        for article in results:
+
+            title = article["title"]
 
             score = max(
                 fuzz.ratio(query.lower(), title.lower()),
@@ -46,9 +62,13 @@ class WikipediaService:
                 fuzz.token_set_ratio(query.lower(), title.lower()),
             )
 
+            logger.info(f"{title} -> {score}")
+
             if score > best_score:
                 best_score = score
                 best_title = title
+
+        logger.info(f"Chosen article: {best_title}")
 
         self.title_cache[query.lower()] = best_title
 
@@ -58,13 +78,31 @@ class WikipediaService:
 
         title = self.search_article(query)
 
-        page = wikipedia.page(
-            title,
-            auto_suggest=False,
+        response = self.session.get(
+            self.SEARCH_URL,
+            params={
+                "action": "query",
+                "prop": "extracts|info",
+                "titles": title,
+                "inprop": "url",
+                "explaintext": True,
+                "exlimit": 1,
+                "format": "json",
+            },
+            timeout=10,
         )
 
+        response.raise_for_status()
+
+        pages = response.json()["query"]["pages"]
+
+        page = next(iter(pages.values()))
+
+        if "missing" in page:
+            raise ValueError(f"No Wikipedia page found for '{title}'.")
+
         return {
-            "title": page.title,
-            "url": page.url,
-            "content": page.content,
+            "title": page["title"],
+            "url": page["fullurl"],
+            "content": page["extract"],
         }
