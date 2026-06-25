@@ -58,7 +58,9 @@ def ask(request: AskRequest):
         logger.exception("Error while processing /ask")
         traceback.print_exc()
 
+        # Reveal the actual error message temporarily to debug the server environment
+        error_msg = str(e) or "An unknown error occurred."
         raise HTTPException(
             status_code=500,
-            detail="Something went wrong while generating an answer. Please try again.",
+            detail=f"Error: {error_msg}. Check your API keys and server logs.",
         )
