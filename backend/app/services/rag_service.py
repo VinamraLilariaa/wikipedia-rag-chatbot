@@ -41,7 +41,6 @@ class RAGService:
                 f"History:\n{history_text}\n\nLatest Question: {question}\n\nQuery:"
             )
             candidate = self.llm.simple_generate(rewrite_prompt).strip().strip('"').strip("'")
-            # Filter out any AI "yapping" if it happens
             if "Query:" in candidate: candidate = candidate.split("Query:")[-1].strip()
             if candidate and len(candidate) > 2:
                 search_query = candidate
@@ -50,7 +49,7 @@ class RAGService:
             article, cache_hit = self._index_article(search_query)
             query_embedding = self.embedder.embed_query(question)
             
-            # Deeper retrieval for better fact-finding
+            # Use top_k=10 for better accuracy
             results = self.chroma.search(query_embedding, top_k=10)
             
             context = "\n\n".join(results["documents"][0])
@@ -60,14 +59,26 @@ class RAGService:
                 "answer": answer,
                 "article": article["title"],
                 "wikipedia_url": article["url"],
-                "sources": [], # Required by schema
+                "sources": [],
                 "images": article["images"],
                 "matched_query": search_query,
                 "cache_hit": cache_hit,
                 "response_time": round(time.time() - start, 2),
-                "model": "Groq Llama-3", # Required by schema
+                "model": "Groq Llama-3",
                 "spelling_corrected": article.get("spelling_corrected", False)
             }
         except Exception as e:
             logger.error(f"RAG Error: {e}")
-            return {"answer": "I'm sorry, I couldn't process that. Please try again.", "error": str(e)}
+            logger.error(traceback.format_exc())
+            return {
+                "answer": "I hit a snag while searching Wikipedia. Please try again.",
+                "article": "Error",
+                "wikipedia_url": "",
+                "sources": [],
+                "images": [],
+                "matched_query": search_query,
+                "cache_hit": False,
+                "response_time": 0,
+                "model": "error",
+                "spelling_corrected": False
+            }
