@@ -49,8 +49,8 @@ class RAGService:
             article, cache_hit = self._index_article(search_query)
             query_embedding = self.embedder.embed_query(question)
             
-            # Use top_k=10 for better accuracy
-            results = self.chroma.search(query_embedding, top_k=10)
+            # High-resolution retrieval for statistical accuracy
+            results = self.chroma.search(query_embedding, top_k=15)
             
             context = "\n\n".join(results["documents"][0])
             answer = self.llm.generate(question=question, context=context)

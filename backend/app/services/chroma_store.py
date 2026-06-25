@@ -19,13 +19,16 @@ class ChromaStore:
 
     def add_article(self, title: str, content: str):
         """
-        Chunk content and add to ChromaDB.
+        Chunk content and add to ChromaDB. 
+        Improved for data-heavy statistical tables.
         """
-        # Split by paragraph 
-        paragraphs = [p.strip() for p in content.split("\n\n") if len(p.strip()) > 50]
+        # Split by paragraph and double-newlines (tables are usually separated this way)
+        raw_chunks = [p.strip() for p in content.split("\n\n")]
         
-        if not paragraphs:
-            return
+        # Lower threshold for data-heavy lines (like stats)
+        paragraphs = [p for p in raw_chunks if len(p) > 20]
+        
+        if not paragraphs: return
 
         ids = [f"{title}_{i}" for i in range(len(paragraphs))]
         metadatas = [{"title": title} for _ in range(len(paragraphs))]
