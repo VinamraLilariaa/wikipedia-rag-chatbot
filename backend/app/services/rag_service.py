@@ -60,10 +60,13 @@ class RAGService:
                 "answer": answer,
                 "article": article["title"],
                 "wikipedia_url": article["url"],
+                "sources": [], # Required by schema
                 "images": article["images"],
                 "matched_query": search_query,
                 "cache_hit": cache_hit,
-                "response_time": round(time.time() - start, 2)
+                "response_time": round(time.time() - start, 2),
+                "model": "Groq Llama-3", # Required by schema
+                "spelling_corrected": article.get("spelling_corrected", False)
             }
         except Exception as e:
             logger.error(f"RAG Error: {e}")

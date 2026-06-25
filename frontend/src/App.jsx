@@ -33,7 +33,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/ask`, {
+      const response = await axios.post(`${API_URL}/api/ask`, {
         question: trimmed,
         history: messages.slice(-5)
       });
