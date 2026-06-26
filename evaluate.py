@@ -160,7 +160,7 @@ def run_evaluation(
 
                 answer=rag["answer"],
 
-                article=rag["context"],
+                article=rag["article"],
 
             )
 

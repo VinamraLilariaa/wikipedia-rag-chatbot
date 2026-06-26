@@ -60,7 +60,6 @@ class RAGService:
         return {
             "answer": answer,
             "article": title,
-            "context": context,          # ← ADD THIS
             "wikipedia_url": article["url"],
             "sources": [title],
             "images": article["images"],
