@@ -9,7 +9,6 @@ from backend.app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
-# Pronouns that indicate a follow-up about the same subject
 FOLLOW_UP_RE = re.compile(
     r'\b(he|she|they|it|his|her|their|its|him|this person|the player|'
     r'the politician|the actor|the cricketer|the same|the president|the minister)\b',
@@ -22,20 +21,19 @@ class RAGService:
         self.wiki = WikipediaService()
         self.store = ChromaStore()
         self.llm = LLMService()
-        self._last_title: str = None   # Session memory
+        self._last_title: str = None
 
     def ask(self, question: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         start = time.time()
         question = question.strip()
 
-        # ── 1. TOPIC RESOLUTION ──────────────────────────────────────────────
-        # If the question is a pronoun follow-up, reuse the last article
+        # ── 1. TOPIC RESOLUTION ──────────────────────────────────────────
         search_query = question
         if self._last_title and FOLLOW_UP_RE.search(question):
             search_query = self._last_title
             logger.info(f"Follow-up detected → reusing '{self._last_title}'")
 
-        # ── 2. WIKIPEDIA RETRIEVAL ───────────────────────────────────────────
+        # ── 2. WIKIPEDIA RETRIEVAL ───────────────────────────────────────
         try:
             article = self.wiki.get_article(search_query)
         except Exception as wiki_err:
@@ -44,57 +42,71 @@ class RAGService:
 
         title = article["title"]
         self._last_title = title
+        content = article["content"]
 
-        # ── 3. CHUNKING & INDEXING ───────────────────────────────────────────
-        try:
-            if not self.store.article_exists(title):
-                self.store.add_documents(title, article["content"])
-        except Exception as idx_err:
-            logger.warning(f"Indexing failed (non-fatal): {idx_err}")
+        # ── 3. SMART CONTEXT ASSEMBLY ────────────────────────────────────
+        # Strategy: for short articles (<15k chars), send the WHOLE thing.
+        # For long articles, use chunked retrieval + fallback to head.
+        context = self._build_context(question, title, content)
 
-        # ── 4. RETRIEVAL ─────────────────────────────────────────────────────
-        try:
-            chunks = self.store.get_article_chunks(title)
-            top_chunks = self.store.search(question, chunks, top_k=6)
-            context = "\n\n".join(top_chunks)
-        except Exception:
-            context = ""
-
-        # Fallback: use article head directly if retrieval produced too little
-        if len(context) < 200:
-            context = article["content"][:7000]
-
-        # ── 5. GENERATION ────────────────────────────────────────────────────
+        # ── 4. LLM GENERATION ────────────────────────────────────────────
         try:
             answer = self.llm.generate(question=question, context=context)
         except Exception as llm_err:
             logger.exception("LLM generation failed")
-            # Graceful degradation: return the Wikipedia extract directly
-            answer = (
-                f"(AI synthesis unavailable) Here is the Wikipedia extract:\n\n"
-                f"{article['content'][:1500]}"
-            )
+            # Graceful degradation — return Wikipedia extract directly
+            answer = f"Wikipedia extract: {content[:1500]}"
 
-        # ── 6. RESPONSE ──────────────────────────────────────────────────────
         return {
             "answer": answer,
             "article": title,
+            "context": context,          # ← ADD THIS
             "wikipedia_url": article["url"],
             "sources": [title],
             "images": article["images"],
-            "cache_hit": False,
+            "cache_hit": self.store.article_exists(title),
             "response_time": round(time.time() - start, 2),
             "model": "Groq-Llama3",
             "spelling_corrected": False,
             "matched_query": title,
         }
 
-    # ── helpers ──────────────────────────────────────────────────────────────
+    def _build_context(self, question: str, title: str, content: str) -> str:
+        """
+        Build the best possible context for the LLM.
+        - Short articles  (<12k chars): send the entire article
+        - Long articles   (>=12k chars): retrieve top chunks + fallback
+        """
+        # Index if not already done
+        try:
+            if not self.store.article_exists(title):
+                self.store.add_documents(title, content)
+        except Exception as e:
+            logger.warning(f"Indexing failed (non-fatal): {e}")
+
+        # Short article — send everything, no information loss
+        if len(content) <= 12000:
+            return content
+
+        # Long article — try chunk retrieval first
+        try:
+            chunks = self.store.get_article_chunks(title)
+            top   = self.store.search(question, chunks, top_k=8)
+            ctx   = "\n\n".join(top)
+            if len(ctx) >= 300:
+                # Also prepend the first 1500 chars (article intro always relevant)
+                intro = content[:1500]
+                return f"{intro}\n\n---Retrieved Sections---\n\n{ctx}"
+        except Exception as e:
+            logger.warning(f"Chunk retrieval failed: {e}")
+
+        # Final fallback — first 8000 chars of article
+        return content[:8000]
 
     def _error_response(self, question: str, start: float, error: str) -> Dict[str, Any]:
         return {
             "answer": (
-                f"I couldn't find a Wikipedia article for '{question}'. "
+                f"I couldn't retrieve a Wikipedia article for '{question}'. "
                 "Please check the spelling or try a more specific name."
             ),
             "article": "Not Found",
